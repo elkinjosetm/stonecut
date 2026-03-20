@@ -1,0 +1,217 @@
+#!/bin/bash
+# Ralph shared library — sourced by ralph-afk and ralph-once
+
+RALPH_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+show_afk_usage() {
+	cat <<'USAGE'
+Usage:
+  ralph-afk --spec <dir> --iterations <n|all>    Local mode
+  ralph-afk --iterations <n|all>                  GitHub mode (auto-detect PRD)
+  ralph-afk --prd <number> --iterations <n|all>   GitHub mode (specific PRD)
+
+Options:
+  --spec <dir>          Path to local spec directory (enables local mode)
+  --prd <number>        GitHub issue number of the PRD (GitHub mode)
+  --iterations <n|all>  Number of iterations to run, or "all"
+USAGE
+}
+
+show_once_usage() {
+	cat <<'USAGE'
+Usage:
+  ralph-once --spec <dir>                         Local mode
+  ralph-once                                      GitHub mode (auto-detect PRD)
+  ralph-once --prd <number>                       GitHub mode (specific PRD)
+
+Options:
+  --spec <dir>          Path to local spec directory (enables local mode)
+  --prd <number>        GitHub issue number of the PRD (GitHub mode)
+USAGE
+}
+
+parse_args() {
+	SPEC_DIR=""
+	PRD_NUMBER=""
+	MAX_ITERATIONS=""
+	MODE=""  # "local" or "github"
+
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			--spec)
+				SPEC_DIR="$2"
+				MODE="local"
+				shift 2
+				;;
+			--prd)
+				PRD_NUMBER="$2"
+				MODE="github"
+				shift 2
+				;;
+			--iterations)
+				MAX_ITERATIONS="$2"
+				shift 2
+				;;
+			--help|-h)
+				return 1
+				;;
+			*)
+				echo "Unknown option: $1"
+				return 1
+				;;
+		esac
+	done
+
+	# Reject conflicting flags
+	if [ -n "$SPEC_DIR" ] && [ -n "$PRD_NUMBER" ]; then
+		echo "Error: --spec and --prd are mutually exclusive"
+		return 1
+	fi
+
+	# If no mode flag given, default to github
+	if [ -z "$MODE" ]; then
+		MODE="github"
+	fi
+}
+
+require_gh() {
+	if ! command -v gh &>/dev/null; then
+		echo "Error: gh CLI is not installed"
+		exit 1
+	fi
+	if ! gh auth status &>/dev/null 2>&1; then
+		echo "Error: gh CLI is not authenticated. Run 'gh auth login'."
+		exit 1
+	fi
+}
+
+get_repo_nwo() {
+	# Returns owner/repo from git remote
+	local url
+	url=$(git remote get-url origin 2>/dev/null)
+	if [ -z "$url" ]; then
+		echo "Error: No git remote 'origin' found"
+		exit 1
+	fi
+	# Handle both HTTPS and SSH URLs
+	echo "$url" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//'
+}
+
+find_prd() {
+	local repo
+	repo=$(get_repo_nwo)
+
+	if [ -n "$PRD_NUMBER" ]; then
+		# Verify the specified issue has the prd label
+		local labels
+		labels=$(gh api "repos/$repo/issues/$PRD_NUMBER" --jq '.labels[].name' 2>/dev/null)
+		if ! echo "$labels" | grep -qx "prd"; then
+			echo "Error: Issue #$PRD_NUMBER does not have the 'prd' label"
+			exit 1
+		fi
+		echo "$PRD_NUMBER"
+		return
+	fi
+
+	# Auto-detect: find issues with prd label
+	local prd_issues
+	prd_issues=$(gh issue list --label prd --state open --json number,title --jq '.[] | "\(.number)|\(.title)"' 2>/dev/null)
+
+	local count
+	count=$(echo "$prd_issues" | grep -c '|')
+
+	if [ "$count" -eq 0 ]; then
+		echo "Error: No open issues with label 'prd' found"
+		exit 1
+	elif [ "$count" -gt 1 ]; then
+		echo "Error: Multiple PRDs found. Specify one with --prd <number>:"
+		echo "$prd_issues" | while IFS='|' read -r num title; do
+			echo "  #$num: $title"
+		done
+		exit 1
+	fi
+
+	echo "$prd_issues" | head -1 | cut -d'|' -f1
+}
+
+get_github_sub_issues() {
+	local prd_num="$1"
+	local repo
+	repo=$(get_repo_nwo)
+	local owner="${repo%%/*}"
+	local name="${repo##*/}"
+
+	gh api graphql -f query="
+		{ repository(owner:\"$owner\", name:\"$name\") {
+			issue(number:$prd_num) {
+				subIssues(first:50) {
+					nodes { number title state }
+				}
+			}
+		}}
+	" --jq '.data.repository.issue.subIssues.nodes[] | "\(.number)|\(.title)|\(.state)"'
+}
+
+get_next_github_issue() {
+	local prd_num="$1"
+	local issues
+	issues=$(get_github_sub_issues "$prd_num")
+
+	# Find first OPEN issue, sorted by number
+	echo "$issues" | sort -t'|' -k1 -n | while IFS='|' read -r num title state; do
+		if [ "$state" = "OPEN" ]; then
+			echo "$num|$title"
+			return
+		fi
+	done
+}
+
+get_github_remaining() {
+	local prd_num="$1"
+	local issues
+	issues=$(get_github_sub_issues "$prd_num")
+	if [ -z "$issues" ]; then
+		echo "0/0"
+		return
+	fi
+	local total open
+	total=$(echo "$issues" | wc -l | tr -d ' ')
+	open=$(echo "$issues" | grep -c '|OPEN$' || true)
+	echo "$open/$total"
+}
+
+close_github_issue() {
+	local issue_num="$1"
+	gh issue close "$issue_num" 2>/dev/null
+}
+
+setup_github_branch() {
+	local prd_num="$1"
+	local branch="prd/$prd_num"
+
+	# Check for clean working tree
+	if ! git diff --quiet || ! git diff --cached --quiet; then
+		echo "Error: Uncommitted changes in working tree. Clean up before running."
+		exit 1
+	fi
+
+	if git show-ref --verify --quiet "refs/heads/$branch"; then
+		git checkout "$branch"
+	else
+		git checkout main
+		git checkout -b "$branch"
+	fi
+	echo "On branch: $branch"
+}
+
+format_elapsed() {
+	local total=$1
+	local hours=$(( total / 3600 ))
+	local minutes=$(( (total % 3600) / 60 ))
+	local seconds=$(( total % 60 ))
+	if [ $hours -gt 0 ]; then
+		echo "${hours}h ${minutes}m ${seconds}s"
+	else
+		echo "${minutes}m ${seconds}s"
+	fi
+}

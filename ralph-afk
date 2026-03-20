@@ -1,0 +1,295 @@
+#!/bin/bash
+# Ralph AFK — Autonomous loop (non-interactive)
+# Supports local mode (--spec) and GitHub mode (--prd or auto-detect)
+
+set -e
+
+# Source shared library from the same directory as this script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/ralph-lib"
+
+# Parse arguments
+if ! parse_args "$@"; then
+	show_afk_usage
+	exit 1
+fi
+
+# Require --iterations for afk mode
+if [ -z "$MAX_ITERATIONS" ]; then
+	echo "Error: --iterations is required"
+	echo ""
+	show_afk_usage
+	exit 1
+fi
+
+# ── Mode-specific setup ─────────────────────────────────────────────
+
+if [ "$MODE" = "local" ]; then
+	# Validate spec directory
+	if [ ! -d "$SPEC_DIR/issues" ]; then
+		echo "Error: $SPEC_DIR/issues/ not found"
+		exit 1
+	fi
+
+	if [ ! -f "$SPEC_DIR/prd.md" ]; then
+		echo "Error: $SPEC_DIR/prd.md not found"
+		exit 1
+	fi
+
+	# Initialize status.json if it doesn't exist
+	if [ ! -f "$SPEC_DIR/status.json" ]; then
+		echo '{ "completed": [] }' > "$SPEC_DIR/status.json"
+	fi
+
+	# Read config.json for branch and commit prefix
+	if [ -f "$SPEC_DIR/config.json" ]; then
+		BRANCH=$(python3 -c "
+import json
+with open('$SPEC_DIR/config.json') as f:
+    config = json.load(f)
+print(config.get('branch') or '')
+")
+		COMMIT_PREFIX=$(python3 -c "
+import json
+with open('$SPEC_DIR/config.json') as f:
+    config = json.load(f)
+v = config.get('commitPrefix')
+print(v if v is not None else 'NULL')
+")
+	else
+		BRANCH=""
+		COMMIT_PREFIX=$(basename "$SPEC_DIR")
+	fi
+
+	# Check out branch if configured
+	if [ -n "$BRANCH" ]; then
+		CURRENT_BRANCH=$(git branch --show-current)
+		if [ "$CURRENT_BRANCH" != "$BRANCH" ]; then
+			if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+				git checkout "$BRANCH"
+			else
+				git checkout -b "$BRANCH"
+			fi
+			echo "On branch: $BRANCH"
+		fi
+	fi
+
+elif [ "$MODE" = "github" ]; then
+	require_gh
+	PRD_NUM=$(find_prd)
+	echo "PRD: #$PRD_NUM"
+	setup_github_branch "$PRD_NUM"
+fi
+
+# ── Session start ────────────────────────────────────────────────────
+
+SESSION_START=$(date +%s)
+echo "Ralph session started at $(date '+%Y-%m-%d %I:%M:%S %p')"
+
+# ── Iteration runner ─────────────────────────────────────────────────
+
+run_iteration() {
+	local i=$1
+
+	echo ""
+	echo "==========================================="
+	echo "  Ralph iteration $i"
+	echo "==========================================="
+	echo ""
+
+	if [ "$MODE" = "local" ]; then
+		# ── Local: find next incomplete issue ──
+		NEXT_ISSUE=$(python3 -c "
+import json, glob, re, sys, os
+
+spec_dir = '$SPEC_DIR'
+
+with open(os.path.join(spec_dir, 'status.json')) as f:
+    status = json.load(f)
+
+completed = set(status.get('completed', []))
+
+issues = []
+for f in sorted(glob.glob(os.path.join(spec_dir, 'issues', '*.md'))):
+    basename = os.path.basename(f)
+    match = re.match(r'^(\d+)', basename)
+    if match:
+        num = int(match.group(1))
+        if num not in completed:
+            issues.append((num, f, basename))
+
+if not issues:
+    print('COMPLETE')
+    sys.exit(0)
+
+num, path, name = issues[0]
+print(f'{num}|{path}|{name}')
+")
+
+		if [ "$NEXT_ISSUE" = "COMPLETE" ]; then
+			echo "All issues complete!"
+			SESSION_ELAPSED=$(( $(date +%s) - SESSION_START ))
+			echo "Session: $(format_elapsed $SESSION_ELAPSED)"
+			return 1
+		fi
+
+		ISSUE_NUM=$(echo "$NEXT_ISSUE" | cut -d'|' -f1)
+		ISSUE_PATH=$(echo "$NEXT_ISSUE" | cut -d'|' -f2)
+		ISSUE_NAME=$(echo "$NEXT_ISSUE" | cut -d'|' -f3)
+
+		REMAINING=$(python3 -c "
+import json, glob, re, os
+
+spec_dir = '$SPEC_DIR'
+
+with open(os.path.join(spec_dir, 'status.json')) as f:
+    status = json.load(f)
+
+completed = set(status.get('completed', []))
+
+total = 0
+for f in glob.glob(os.path.join(spec_dir, 'issues', '*.md')):
+    match = re.match(r'^(\d+)', os.path.basename(f))
+    if match:
+        total += 1
+
+remaining = total - len(completed)
+print(f'{remaining}/{total}')
+")
+
+		echo "Issues remaining: $REMAINING"
+		echo "Next: Issue $ISSUE_NUM — $ISSUE_NAME"
+		echo ""
+
+	elif [ "$MODE" = "github" ]; then
+		# ── GitHub: find next open sub-issue ──
+		NEXT_ISSUE=$(get_next_github_issue "$PRD_NUM")
+
+		if [ -z "$NEXT_ISSUE" ]; then
+			echo "All issues complete!"
+			SESSION_ELAPSED=$(( $(date +%s) - SESSION_START ))
+			echo "Session: $(format_elapsed $SESSION_ELAPSED)"
+			return 1
+		fi
+
+		ISSUE_NUM=$(echo "$NEXT_ISSUE" | cut -d'|' -f1)
+		ISSUE_TITLE=$(echo "$NEXT_ISSUE" | cut -d'|' -f2)
+
+		REMAINING=$(get_github_remaining "$PRD_NUM")
+
+		echo "Issues remaining: $REMAINING"
+		echo "Next: Issue #$ISSUE_NUM — $ISSUE_TITLE"
+		echo ""
+	fi
+
+	START_TIME=$(date +%s)
+	echo "Started at $(date '+%Y-%m-%d %I:%M:%S %p')"
+	echo ""
+
+	# ── Build prompt ─────────────────────────────────────────────────
+
+	if [ "$MODE" = "local" ]; then
+		# Build commit step based on config
+		if [ "$COMMIT_PREFIX" = "NULL" ]; then
+			COMMIT_STEP="5. Commit all changes following the commit instructions in the issue's acceptance criteria."
+		else
+			COMMIT_STEP="5. Commit all changes in a single commit with message: $COMMIT_PREFIX :: <concise description of what was built>"
+		fi
+
+PROMPT="You are executing a single task from a structured spec.
+
+## Instructions
+1. Read the PRD at $SPEC_DIR/prd.md — it contains the full context, architecture, and constraints.
+2. Read the issue spec at $ISSUE_PATH — it contains exactly what to build and the acceptance criteria.
+3. Implement everything described in the issue spec.
+4. Verify your work compiles and passes any validation described in the issue.
+$COMMIT_STEP
+
+IMPORTANT:
+- Do ONLY this one issue. Stop after committing.
+- Do NOT modify files outside the scope of this issue unless fixing an import path that changed.
+- Scope lint to specific files — do not run project-wide lint that auto-fixes unrelated files."
+
+	elif [ "$MODE" = "github" ]; then
+
+PROMPT="You are executing a single task from a GitHub issue.
+
+## Instructions
+1. Fetch the PRD by running: gh issue view $PRD_NUM --json body -q '.body'
+   Read it carefully — it contains the full context, architecture, and constraints.
+2. Fetch your task by running: gh issue view $ISSUE_NUM --json body -q '.body'
+   It contains exactly what to build and the acceptance criteria.
+3. Implement everything described in the task issue.
+4. Verify your work compiles and passes any validation described in the issue.
+5. Commit all changes in a single commit with message: <concise description of what was built> (#$ISSUE_NUM)
+
+IMPORTANT:
+- Do ONLY this one issue. Stop after committing.
+- Do NOT modify files outside the scope of this issue unless fixing an import path that changed.
+- Scope lint to specific files — do not run project-wide lint that auto-fixes unrelated files."
+
+	fi
+
+	# ── Run Claude ───────────────────────────────────────────────────
+
+	result=$(echo "$PROMPT" | claude --allowedTools "Bash,Edit,Read,Write,Glob,Grep" -p)
+
+	echo "$result"
+
+	# ── Bookkeeping ──────────────────────────────────────────────────
+
+	if [ "$MODE" = "local" ]; then
+		python3 -c "
+import json
+with open('$SPEC_DIR/status.json') as f:
+    status = json.load(f)
+status['completed'].append($ISSUE_NUM)
+status['completed'] = sorted(set(status['completed']))
+with open('$SPEC_DIR/status.json', 'w') as f:
+    json.dump(status, f, indent=2)
+    f.write('\n')
+"
+
+		echo "$(date '+%Y-%m-%d %H:%M') — Issue $ISSUE_NUM complete: $ISSUE_NAME" >> "$SPEC_DIR/progress.txt"
+
+	elif [ "$MODE" = "github" ]; then
+		close_github_issue "$ISSUE_NUM"
+	fi
+
+	# ── Timing stats ─────────────────────────────────────────────────
+
+	END_TIME=$(date +%s)
+	ELAPSED=$(( END_TIME - START_TIME ))
+
+	SESSION_ELAPSED=$(( $(date +%s) - SESSION_START ))
+
+	echo ""
+	echo "Issue $ISSUE_NUM marked as complete."
+	echo "Iteration $i complete at $(date '+%Y-%m-%d %I:%M:%S %p')"
+	echo "  Iteration: $(format_elapsed $ELAPSED) | Session: $(format_elapsed $SESSION_ELAPSED)"
+	echo "-------------------------------------------"
+	return 0
+}
+
+# ── Main loop ────────────────────────────────────────────────────────
+
+if [ "$MAX_ITERATIONS" = "all" ]; then
+	i=1
+	while true; do
+		run_iteration $i || break
+		((i++))
+	done
+else
+	for ((i=1; i<=$MAX_ITERATIONS; i++)); do
+		run_iteration $i || break
+	done
+fi
+
+# ── Session summary ──────────────────────────────────────────────────
+
+SESSION_ELAPSED=$(( $(date +%s) - SESSION_START ))
+echo ""
+echo "==========================================="
+echo "  Ralph session finished at $(date '+%Y-%m-%d %I:%M:%S %p')"
+echo "  Total time: $(format_elapsed $SESSION_ELAPSED)"
+echo "==========================================="
