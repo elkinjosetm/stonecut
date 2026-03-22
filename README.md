@@ -1,81 +1,101 @@
 # Orchestrator
 
-Shell scripts that drive PRD-driven development with Claude Code. You write the spec, ralph executes the issues one by one.
+A Python CLI that drives PRD-driven development with Claude Code. You write the spec, Forge executes the issues one by one.
 
 ## Workflow
 
 1. **`/grill-me`** — Stress-test your idea. Get grilled on the plan until it's solid.
 2. **`/write-a-prd`** — Turn the validated idea into a PRD with clear scope, constraints, and architecture.
 3. **`/prd-to-issues`** — Break the PRD into independently-grabbable issues (local markdown files or GitHub sub-issues).
-4. **`ralph-once` / `ralph-afk`** — Execute the issues sequentially with Claude Code.
+4. **`forge`** — Execute the issues sequentially with Claude Code.
 
-Steps 1–3 are Claude Code skills that ship in this repo under `skills/`. Step 4 uses the shell scripts at the repo root.
+Steps 1–3 are Claude Code skills that ship in this repo under `skills/`. Step 4 is the Forge CLI.
 
-## Scripts
-
-### `ralph-once`
-
-Picks the next incomplete issue, spawns a Claude Code session to implement it, and stops. Interactive mode — you see Claude work in real time.
+## Installation
 
 ```sh
-# Local mode — issues as markdown files
-ralph-once --spec ./specs/my-feature
-
-# GitHub mode — issues as GitHub sub-issues
-ralph-once --prd 42
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
 ```
 
-### `ralph-afk`
+This makes the `forge` command available inside the virtual environment. You'll need to `source .venv/bin/activate` in each new shell session.
 
-Same as `ralph-once`, but loops through multiple issues autonomously. Non-interactive — pipe it to a log and walk away.
+## Usage
+
+Forge has two subcommands (`spec` for local specs, `prd` for GitHub PRDs) and two execution modes (`once` for interactive, `afk` for autonomous).
+
+### `forge spec` — Local specs
 
 ```sh
-# Run 5 issues then stop
-ralph-afk --spec ./specs/my-feature --iterations 5
+# Interactive — pick the next issue, work on it with Claude in real time
+forge spec my-feature -m once
 
-# Run until all issues are done
-ralph-afk --prd 42 --iterations all
+# Autonomous — run 5 issues headless, then push and create a PR
+forge spec my-feature -m afk -i 5
+
+# Run all remaining issues
+forge spec my-feature -m afk -i all
 ```
 
-Prints timing stats per iteration and a session summary at the end.
+### `forge prd` — GitHub PRDs
+
+```sh
+# Interactive — pick the next open sub-issue
+forge prd 42 -m once
+
+# Autonomous — run 5 issues headless, then push and create a PR
+forge prd 42 -m afk -i 5
+
+# Run all remaining sub-issues
+forge prd 42 -m afk -i all
+```
+
+### Flags
+
+| Flag | Short | Required | Description |
+|------|-------|----------|-------------|
+| `--mode` | `-m` | Always | `once` (interactive) or `afk` (autonomous) |
+| `--iterations` | `-i` | In `afk` mode | Positive integer or `all`. Silently ignored in `once` mode. |
+
+### Pre-execution prompts
+
+Before starting, Forge:
+
+1. Checks for a clean working tree
+2. Prompts for a branch name (suggests `feature/<name>` or `prd/<number>`)
+3. Prompts for a base branch / PR target (suggests `main`)
+4. Creates or checks out the branch
+
+### After an `afk` run
+
+Forge automatically pushes the branch, creates a PR, and includes a Forge Report listing each issue with its status (completed or failed). Timing stats are printed per iteration and for the full session.
 
 ## Modes
 
-### Local mode (`--spec <dir>`)
+### Local mode (`forge spec <name>`)
 
-Expects a spec directory with this structure:
+Expects a spec directory at `.forge/<name>/` with this structure:
 
 ```
-specs/my-feature/
+.forge/my-feature/
 ├── prd.md              # The full PRD
 ├── issues/
 │   ├── 01-setup.md     # Issue files, numbered for ordering
 │   ├── 02-core.md
 │   └── 03-api.md
-├── config.json         # Optional: branch name and commit prefix
 ├── status.json         # Auto-created: tracks completed issues
 └── progress.txt        # Auto-created: timestamped completion log
 ```
 
-**`config.json`** (optional):
-```json
-{
-  "branch": "feature/my-feature",
-  "commitPrefix": "my-feature"
-}
-```
-
-- `branch` — git branch to check out before running. Created if it doesn't exist.
-- `commitPrefix` — commit messages become `<prefix> :: <description>`. If omitted, uses the spec directory name. Set to `null` to let the issue's acceptance criteria define the commit format.
-
-### GitHub mode (`--prd <number>`)
+### GitHub mode (`forge prd <number>`)
 
 Works with GitHub issues instead of local files:
 
 - The PRD is a GitHub issue labeled `prd`
 - Tasks are sub-issues of the PRD
 - Progress is tracked by issue state (open/closed)
-- A branch `prd/<number>` is created automatically
+- Completed issues are closed via `gh issue close`
 
 ## Skills
 
@@ -91,6 +111,16 @@ Once linked, they're available as `/grill-me`, `/write-a-prd`, and `/prd-to-issu
 
 ## Prerequisites
 
+- Python 3.10+
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) — `claude` must be in your PATH
 - [GitHub CLI](https://cli.github.com/) — `gh`, authenticated. Only needed for GitHub mode.
-- Python 3 — used for local mode bookkeeping
+
+## Legacy scripts (deprecated)
+
+The original shell scripts (`ralph-once`, `ralph-afk`, `ralph-lib`) remain in the repo for reference. They are functionally replaced by Forge and will be removed in a future release.
+
+```sh
+# These still work but are deprecated — use forge instead
+ralph-once --spec ./specs/my-feature
+ralph-afk --prd 42 --iterations all
+```

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forge-orchestrator"
+version = "0.1.0"
+description = "CLI tool that executes PRD-driven development workflows using Claude Code"
+requires-python = ">=3.10"
+dependencies = [
+    "typer>=0.9.0",
+    "questionary>=2.0.0",
+]
+
+[project.scripts]
+forge = "forge.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+forge = ["templates/*.md"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
