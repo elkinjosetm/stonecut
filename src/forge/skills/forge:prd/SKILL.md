@@ -17,7 +17,7 @@ Explore the repo to verify the user's assertions and understand the current stat
 
 ### 3. Interview
 
-Interview the user about every aspect of the plan until you reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one.
+Interview the user relentlessly about every aspect of the plan until you reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one.
 
 ### 4. Design modules
 
