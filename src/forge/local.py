@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -82,3 +83,22 @@ class LocalSource:
         total = len(all_issues)
         remaining = sum(1 for num, _, _ in all_issues if num not in completed)
         return remaining, total
+
+    def complete_issue(self, issue: Issue) -> None:
+        """Mark an issue as complete: update status.json and append to progress.txt."""
+        # Update status.json
+        path = self._status_path()
+        if path.exists():
+            data = json.loads(path.read_text())
+        else:
+            data = {"completed": []}
+        completed = set(data.get("completed", []))
+        completed.add(issue.number)
+        data["completed"] = sorted(completed)
+        path.write_text(json.dumps(data, indent=2) + "\n")
+
+        # Append to progress.txt
+        progress_path = self.spec_dir / "progress.txt"
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        with open(progress_path, "a") as f:
+            f.write(f"{timestamp} — Issue {issue.number} complete: {issue.filename}\n")

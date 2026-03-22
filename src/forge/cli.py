@@ -7,7 +7,7 @@ import typer
 
 from forge.local import LocalSource
 from forge.prompt import render_local_once
-from forge.runner import run_interactive
+from forge.runner import run_afk_loop, run_interactive
 
 app = typer.Typer(
     help="Forge — execute PRD-driven development workflows using Claude Code.",
@@ -68,21 +68,22 @@ def spec(
     ),
 ) -> None:
     """Execute issues from a local spec."""
-    _validate_iterations(mode, iterations)
+    parsed_iterations = _validate_iterations(mode, iterations)
 
     source = LocalSource(name)
-    issue = source.get_next_issue()
-
-    if issue is None:
-        typer.echo("All issues complete!")
-        raise typer.Exit()
-
-    remaining, total = source.get_remaining_count()
-    typer.echo(f"Issue {issue.number}: {issue.filename}")
-    typer.echo(f"Remaining: {remaining}/{total}")
-    typer.echo("")
 
     if mode == Mode.once:
+        issue = source.get_next_issue()
+
+        if issue is None:
+            typer.echo("All issues complete!")
+            raise typer.Exit()
+
+        remaining, total = source.get_remaining_count()
+        typer.echo(f"Issue {issue.number}: {issue.filename}")
+        typer.echo(f"Remaining: {remaining}/{total}")
+        typer.echo("")
+
         prompt = render_local_once(
             prd_content=source.get_prd_content(),
             issue_number=issue.number,
@@ -91,6 +92,13 @@ def spec(
             spec_dir=str(source.spec_dir),
         )
         run_interactive(prompt)
+
+    elif mode == Mode.afk:
+        run_afk_loop(
+            source=source,
+            iterations=parsed_iterations,
+            prd_content=source.get_prd_content(),
+        )
 
 
 @app.command()
