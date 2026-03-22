@@ -13,13 +13,26 @@ Steps 1–3 are Claude Code skills that ship in this repo under `skills/`. Step 
 
 ## Installation
 
+### Quick install (recommended)
+
 ```sh
+brew install pipx
+pipx install git+https://github.com/elkinjosetm/forge.git
+```
+
+This makes the `forge` command globally available — no venv activation needed.
+
+### Development install
+
+```sh
+git clone https://github.com/elkinjosetm/forge.git
+cd orchestrator
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 ```
 
-This makes the `forge` command available inside the virtual environment. You'll need to `source .venv/bin/activate` in each new shell session.
+This installs in editable mode for contributors. You'll need to `source .venv/bin/activate` in each new shell session.
 
 ## Usage
 
