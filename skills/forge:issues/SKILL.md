@@ -1,11 +1,9 @@
 ---
-name: prd-to-issues
-description: Break a PRD into independently-grabbable GitHub issues using tracer-bullet vertical slices. Use when user wants to convert a PRD to issues, create implementation tickets, or break down a PRD into work items.
+name: forge:issues
+description: Break a PRD into independently-grabbable GitHub issues or local markdown files using tracer-bullet vertical slices. Use when the user wants to convert a PRD into implementation tickets or work items.
 ---
 
-# PRD to Issues
-
-Break a PRD into independently-grabbable issues using vertical slices (tracer bullets).
+You are breaking a PRD into issues as part of the PRD Forge workflow. Each issue should be a thin vertical slice that cuts through all integration layers end-to-end.
 
 ## Process
 
@@ -13,7 +11,7 @@ Break a PRD into independently-grabbable issues using vertical slices (tracer bu
 
 Determine where the PRD lives. Check these in order:
 
-1. **Conversation context** — If a PRD was created earlier in this conversation (via `/write-a-prd` or otherwise), you already know where it is. State where you found it and confirm with the user.
+1. **Conversation context** — If a PRD was created earlier in this conversation (via `/forge:prd` or otherwise), you already know where it is. State where you found it and confirm with the user.
 2. **Ask the user** — If no PRD is in context, ask: "Where is the PRD? Give me a local file path (e.g., `specs/ASC-1/prd.md`) or a GitHub issue number."
 
 If given a GitHub issue number, fetch it with `gh issue view <number>`.
@@ -154,9 +152,9 @@ Do NOT close or modify the parent PRD issue (if it's a GitHub issue).
 
 ### 7. Configure execution (local files only)
 
-> **Note:** GitHub mode does not need a config.json. The ralph scripts infer the branch (`prd/<issue-number>`) and commit format (`<description> (#<issue-number>)`) automatically from the PRD issue.
+> **Note:** GitHub mode does not need a config.json. The forge scripts infer the branch (`prd/<issue-number>`) and commit format (`<description> (#<issue-number>)`) automatically from the PRD issue.
 
-After creating local issue files, configure how the ralph scripts will execute this spec. Write a `config.json` to the spec directory:
+After creating local issue files, configure how the forge scripts will execute this spec. Write a `config.json` to the spec directory:
 
 ```json
 {
@@ -168,7 +166,7 @@ After creating local issue files, configure how the ralph scripts will execute t
 **Branch** — Ask the user: "What branch should this work happen on?" If they provide a name, set `branch` to that value and create the branch (from the current HEAD) if it doesn't already exist. If they want to stay on the current branch, set to `null`.
 
 **Commit prefix** — Determine from the issue structure:
-- If all issues share the same commit prefix (single-ticket spec), set `commitPrefix` to that value (e.g., `"SCP-1099"`). The ralph scripts will use `<commitPrefix> :: <description>` for commit messages.
-- If each issue defines its own commit message (multi-ticket spec where issues reference different ticket IDs), set `commitPrefix` to `null`. The ralph scripts will omit the commit step and let each issue's acceptance criteria define the commit message.
+- If all issues share the same commit prefix (single-ticket spec), set `commitPrefix` to that value (e.g., `"SCP-1099"`). The forge scripts will use `<commitPrefix> :: <description>` for commit messages.
+- If each issue defines its own commit message (multi-ticket spec where issues reference different ticket IDs), set `commitPrefix` to `null`. The forge scripts will omit the commit step and let each issue's acceptance criteria define the commit message.
 
 When in doubt, ask the user which approach they prefer.
