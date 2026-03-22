@@ -8,11 +8,11 @@ from typing import Optional
 import questionary
 import typer
 
-from forge.git import checkout_or_create_branch, ensure_clean_tree
+from forge.git import checkout_or_create_branch, create_pr, ensure_clean_tree, push_branch
 from forge.github import GitHubSource
 from forge.local import LocalSource
 from forge.prompt import render_github_afk, render_github_once, render_local_afk, render_local_once
-from forge.runner import run_afk_loop, run_interactive
+from forge.runner import IterationResult, run_afk_loop, run_interactive
 
 app = typer.Typer(
     help="Forge — execute PRD-driven development workflows using Claude Code.",
@@ -40,8 +40,8 @@ def _parse_iterations(value: Optional[str]) -> Optional[int | str]:
     return n
 
 
-def _pre_execution(suggested_branch: str) -> str:
-    """Run pre-execution prompts and git checks. Returns the base branch."""
+def _pre_execution(suggested_branch: str) -> tuple[str, str]:
+    """Run pre-execution prompts and git checks. Returns (branch, base_branch)."""
     ensure_clean_tree()
 
     branch = questionary.text(
@@ -57,7 +57,28 @@ def _pre_execution(suggested_branch: str) -> str:
     checkout_or_create_branch(branch)
     typer.echo("")
 
-    return base_branch
+    return branch, base_branch
+
+
+def _build_forge_report(results: list[IterationResult]) -> str:
+    """Build the Forge Report section for a PR body."""
+    lines = ["## Forge Report"]
+    for r in results:
+        status = "completed" if r.success else "failed (non-zero exit code)"
+        lines.append(f"- #{r.issue_number} {r.issue_filename}: {status}")
+    return "\n".join(lines)
+
+
+def _push_and_create_pr(
+    results: list[IterationResult],
+    branch: str,
+    base_branch: str,
+    pr_title: str,
+) -> None:
+    """Push the branch and create a PR with a Forge Report after an afk run."""
+    report = _build_forge_report(results)
+    push_branch(branch)
+    create_pr(title=pr_title, body=report, base_branch=base_branch)
 
 
 def _validate_iterations(mode: Mode, iterations_raw: Optional[str]) -> Optional[int | str]:
@@ -96,7 +117,7 @@ def spec(
     parsed_iterations = _validate_iterations(mode, iterations)
 
     source = LocalSource(name)
-    _base_branch = _pre_execution(f"feature/{name}")
+    branch, base_branch = _pre_execution(f"feature/{name}")
 
     if mode == Mode.once:
         issue = source.get_next_issue()
@@ -121,7 +142,7 @@ def spec(
 
     elif mode == Mode.afk:
         prd_content = source.get_prd_content()
-        run_afk_loop(
+        results = run_afk_loop(
             source=source,
             iterations=parsed_iterations,
             render_prompt=lambda issue: render_local_afk(
@@ -132,6 +153,13 @@ def spec(
             ),
             display_name=lambda issue: issue.filename,
         )
+        if results:
+            _push_and_create_pr(
+                results=results,
+                branch=branch,
+                base_branch=base_branch,
+                pr_title=f"Forge: {name}",
+            )
 
 
 @app.command()
@@ -154,7 +182,7 @@ def prd(
     parsed_iterations = _validate_iterations(mode, iterations)
 
     source = GitHubSource(number)
-    _base_branch = _pre_execution(f"prd/{number}")
+    branch, base_branch = _pre_execution(f"prd/{number}")
 
     if mode == Mode.once:
         issue = source.get_next_issue()
@@ -178,7 +206,7 @@ def prd(
 
     elif mode == Mode.afk:
         prd_content = source.get_prd_content()
-        run_afk_loop(
+        results = run_afk_loop(
             source=source,
             iterations=parsed_iterations,
             render_prompt=lambda issue: render_github_afk(
@@ -189,3 +217,10 @@ def prd(
             ),
             display_name=lambda issue: issue.title,
         )
+        if results:
+            _push_and_create_pr(
+                results=results,
+                branch=branch,
+                base_branch=base_branch,
+                pr_title=f"Forge: PRD #{number}",
+            )

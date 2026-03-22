@@ -33,3 +33,22 @@ def checkout_or_create_branch(branch: str) -> None:
     else:
         subprocess.run(["git", "checkout", "-b", branch], check=True)
         typer.echo(f"Created and checked out new branch: {branch}")
+
+
+def push_branch(branch: str) -> None:
+    """Push the branch to the remote with upstream tracking."""
+    typer.echo(f"Pushing branch: {branch}")
+    subprocess.run(
+        ["git", "push", "-u", "origin", branch],
+        check=True,
+    )
+
+
+def create_pr(title: str, body: str, base_branch: str) -> None:
+    """Create a pull request via gh CLI."""
+    typer.echo(f"Creating PR targeting {base_branch}...")
+    subprocess.run(
+        ["gh", "pr", "create", "--title", title, "--body", body, "--base", base_branch],
+        check=True,
+    )
+    typer.echo("PR created.")
