@@ -4,12 +4,12 @@ A CLI that drives PRD-driven development with Claude Code. You write the spec, F
 
 ## Workflow
 
-1. **`/grill-me`** — Stress-test your idea. Get grilled on the plan until it's solid.
-2. **`/write-a-prd`** — Turn the validated idea into a PRD with clear scope, constraints, and architecture.
-3. **`/prd-to-issues`** — Break the PRD into independently-grabbable issues (local markdown files or GitHub sub-issues).
+1. **`/forge:interview`** — Stress-test your idea. Get grilled on the plan until it's solid.
+2. **`/forge:prd`** — Turn the validated idea into a PRD with clear scope, constraints, and architecture.
+3. **`/forge:issues`** — Break the PRD into independently-grabbable issues (local markdown files or GitHub sub-issues).
 4. **`forge`** — Execute the issues sequentially with Claude Code.
 
-Steps 1–3 are Claude Code skills that ship in this repo under `skills/`. Step 4 is the Forge CLI.
+Steps 1–3 are Claude Code skills installed via `forge setup-skills`. Step 4 is the Forge CLI.
 
 ## Installation
 
@@ -112,15 +112,19 @@ Works with GitHub issues instead of local files:
 
 ## Skills
 
-The `skills/` directory contains Claude Code skills for steps 1–3 of the workflow. Install them by symlinking into your Claude Code skills directory:
+The repo ships three Claude Code skills for steps 1–3 of the workflow. Install them with:
 
 ```sh
-ln -s /path/to/prd-forge/skills/grill-me ~/.claude/skills/grill-me
-ln -s /path/to/prd-forge/skills/write-a-prd ~/.claude/skills/write-a-prd
-ln -s /path/to/prd-forge/skills/prd-to-issues ~/.claude/skills/prd-to-issues
+forge setup-skills
 ```
 
-Once linked, they're available as `/grill-me`, `/write-a-prd`, and `/prd-to-issues` in any Claude Code session.
+This creates symlinks in `~/.claude/skills/` pointing to the installed package. Once linked, they're available as `/forge:interview`, `/forge:prd`, and `/forge:issues` in any Claude Code session.
+
+To remove the symlinks:
+
+```sh
+forge remove-skills
+```
 
 ## Prerequisites
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from pathlib import Path
 from typing import Optional
 
 import questionary
@@ -13,6 +14,8 @@ from forge.github import GitHubSource
 from forge.local import LocalSource
 from forge.prompt import render_github_afk, render_github_once, render_local_afk, render_local_once
 from forge.runner import IterationResult, run_afk_loop, run_interactive
+
+SKILL_NAMES = ["forge:interview", "forge:prd", "forge:issues"]
 
 app = typer.Typer(
     help="Forge — execute PRD-driven development workflows using Claude Code.",
@@ -224,3 +227,52 @@ def prd(
                 base_branch=base_branch,
                 pr_title=f"Forge: PRD #{number}",
             )
+
+
+def _get_skills_source_dir() -> Path:
+    """Return the path to the skills/ directory shipped with this package."""
+    return Path(__file__).resolve().parent / "skills"
+
+
+def _get_skills_target_dir() -> Path:
+    """Return ~/.claude/skills/, creating it if needed."""
+    target = Path.home() / ".claude" / "skills"
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+@app.command("setup-skills")
+def setup_skills() -> None:
+    """Install Forge skills as symlinks into ~/.claude/skills/."""
+    source_dir = _get_skills_source_dir()
+
+    if not source_dir.is_dir():
+        typer.echo(f"Error: skills directory not found at {source_dir}", err=True)
+        raise typer.Exit(code=1)
+
+    target_dir = _get_skills_target_dir()
+
+    for name in SKILL_NAMES:
+        source = source_dir / name
+        target = target_dir / name
+
+        if not source.is_dir():
+            typer.echo(f"Warning: skill source not found: {source}")
+            continue
+
+        if target.is_symlink():
+            existing = target.resolve()
+            if existing == source.resolve():
+                # Already points to the right place — skip silently
+                continue
+            typer.echo(
+                f"Warning: {target} already exists as symlink -> {target.readlink()}. Skipping."
+            )
+            continue
+
+        if target.exists():
+            typer.echo(f"Warning: {target} already exists (not a symlink). Skipping.")
+            continue
+
+        target.symlink_to(source)
+        typer.echo(f"Linked {name} -> {source}")
