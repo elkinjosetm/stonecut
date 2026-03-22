@@ -5,6 +5,10 @@ from typing import Optional
 
 import typer
 
+from forge.local import LocalSource
+from forge.prompt import render_local_once
+from forge.runner import run_interactive
+
 app = typer.Typer(
     help="Forge — execute PRD-driven development workflows using Claude Code.",
     add_completion=False,
@@ -31,13 +35,8 @@ def _parse_iterations(value: Optional[str]) -> Optional[int | str]:
     return n
 
 
-def _validate_and_report(
-    source: str,
-    identifier: str | int,
-    mode: Mode,
-    iterations_raw: Optional[str],
-) -> None:
-    """Validate flag combinations and print parsed args (placeholder for execution)."""
+def _validate_iterations(mode: Mode, iterations_raw: Optional[str]) -> Optional[int | str]:
+    """Validate and parse iterations flag for the given mode."""
     iterations = _parse_iterations(iterations_raw)
 
     if mode == Mode.afk and iterations is None:
@@ -49,11 +48,7 @@ def _validate_and_report(
     if mode == Mode.once:
         iterations = None
 
-    typer.echo(f"Source:     {source}")
-    typer.echo(f"Identifier: {identifier}")
-    typer.echo(f"Mode:       {mode.value}")
-    if mode == Mode.afk:
-        typer.echo(f"Iterations: {iterations}")
+    return iterations
 
 
 @app.command()
@@ -73,7 +68,29 @@ def spec(
     ),
 ) -> None:
     """Execute issues from a local spec."""
-    _validate_and_report("spec", name, mode, iterations)
+    _validate_iterations(mode, iterations)
+
+    source = LocalSource(name)
+    issue = source.get_next_issue()
+
+    if issue is None:
+        typer.echo("All issues complete!")
+        raise typer.Exit()
+
+    remaining, total = source.get_remaining_count()
+    typer.echo(f"Issue {issue.number}: {issue.filename}")
+    typer.echo(f"Remaining: {remaining}/{total}")
+    typer.echo("")
+
+    if mode == Mode.once:
+        prompt = render_local_once(
+            prd_content=source.get_prd_content(),
+            issue_number=issue.number,
+            issue_filename=issue.filename,
+            issue_content=issue.content,
+            spec_dir=str(source.spec_dir),
+        )
+        run_interactive(prompt)
 
 
 @app.command()
@@ -93,4 +110,7 @@ def prd(
     ),
 ) -> None:
     """Execute issues from a GitHub PRD."""
-    _validate_and_report("prd", number, mode, iterations)
+    _validate_iterations(mode, iterations)
+    typer.echo(f"Source:     prd")
+    typer.echo(f"Identifier: {number}")
+    typer.echo(f"Mode:       {mode.value}")

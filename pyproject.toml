@@ -17,3 +17,6 @@ forge = "forge.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+forge = ["templates/*.md"]
