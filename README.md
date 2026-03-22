@@ -1,4 +1,4 @@
-# Orchestrator
+# Forge Orchestrator
 
 A Python CLI that drives PRD-driven development with Claude Code. You write the spec, Forge executes the issues one by one.
 
