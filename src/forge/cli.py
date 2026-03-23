@@ -74,12 +74,19 @@ def _pre_execution(suggested_branch: str) -> tuple[str, str]:
     return branch, base_branch
 
 
-def _build_forge_report(results: list[IterationResult]) -> str:
+def _build_forge_report(
+    results: list[IterationResult], *, prd_number: int | None = None
+) -> str:
     """Build the Forge Report section for a PR body."""
     lines = ["## Forge Report"]
     for r in results:
         status = "completed" if r.success else "failed (non-zero exit code)"
         lines.append(f"- #{r.issue_number} {r.issue_filename}: {status}")
+
+    if prd_number is not None:
+        lines.append("")
+        lines.append(f"Closes #{prd_number}")
+
     return "\n".join(lines)
 
 
@@ -88,9 +95,11 @@ def _push_and_create_pr(
     branch: str,
     base_branch: str,
     pr_title: str,
+    *,
+    prd_number: int | None = None,
 ) -> None:
     """Push the branch and create a PR with a Forge Report after an afk run."""
-    report = _build_forge_report(results)
+    report = _build_forge_report(results, prd_number=prd_number)
     push_branch(branch)
     create_pr(title=pr_title, body=report, base_branch=base_branch)
 
@@ -237,6 +246,7 @@ def prd(
                 branch=branch,
                 base_branch=base_branch,
                 pr_title=f"Forge: PRD #{number}",
+                prd_number=number,
             )
 
 
