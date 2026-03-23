@@ -98,3 +98,7 @@ A description of the things that are out of scope for this PRD.
 Any further notes about the feature.
 
 </prd-template>
+
+## Next Step
+
+Once the PRD is saved, ask the user: "Ready to break this into issues? I can run `/forge:issues` next."

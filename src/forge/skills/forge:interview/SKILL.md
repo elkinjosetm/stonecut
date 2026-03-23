@@ -12,4 +12,9 @@ If a question can be answered by exploring the codebase, explore the codebase in
 - Be relentless. Push back on vague answers. The goal is stress-testing, not politeness.
 - Prioritize questions that could change the shape of the solution.
 - When you discover a contradiction or gap, state it clearly and demand resolution.
+- For each question, provide your recommended answer.
 - Once a branch is resolved, move on. Don't revisit settled decisions.
+
+## Next Step
+
+When the interview is complete and you've reached shared understanding, ask the user: "Ready to write the PRD? I can run `/forge:prd` next."

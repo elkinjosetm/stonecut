@@ -170,3 +170,11 @@ After creating local issue files, configure how the forge scripts will execute t
 - If each issue defines its own commit message (multi-ticket spec where issues reference different ticket IDs), set `commitPrefix` to `null`. The forge scripts will omit the commit step and let each issue's acceptance criteria define the commit message.
 
 When in doubt, ask the user which approach they prefer.
+
+## Workflow Complete
+
+Once all issues are created, present the user with their options:
+
+1. **Implement now** — Start on the first issue in this session
+2. **Start fresh** — Pick up implementation in a new session
+3. **Use the forge CLI** — Run implementation via the CLI
