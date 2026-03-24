@@ -18,7 +18,8 @@ def skills_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     target = tmp_path / ".claude" / "skills"
     target.mkdir(parents=True)
     monkeypatch.setattr(
-        "forge.cli._get_skills_target_dir", lambda *, create=True: target
+        "forge.cli._get_skills_target_dir",
+        lambda *, create=True, claude_root=None: target,
     )
     return target
 
@@ -144,7 +145,8 @@ class TestRemoveSkills:
     ) -> None:
         nonexistent = tmp_path / "does-not-exist"
         monkeypatch.setattr(
-            "forge.cli._get_skills_target_dir", lambda *, create=True: nonexistent
+            "forge.cli._get_skills_target_dir",
+            lambda *, create=True, claude_root=None: nonexistent,
         )
 
         result = runner.invoke(app, ["remove-skills"])
@@ -161,3 +163,109 @@ class TestRemoveSkills:
         for name in SKILL_NAMES:
             assert (skills_env / name).is_dir()
             assert not (skills_env / name).is_symlink()
+
+
+# --------------- --target flag ---------------
+
+
+class TestSetupSkillsTarget:
+    """Tests for setup-skills --target using real temp directories (no monkeypatch)."""
+
+    def test_creates_symlinks_at_target(self, tmp_path: Path) -> None:
+        claude_root = tmp_path / ".claude-acme"
+        claude_root.mkdir()
+
+        result = runner.invoke(app, ["setup-skills", "--target", str(claude_root)])
+        assert result.exit_code == 0
+
+        skills_dir = claude_root / "skills"
+        assert skills_dir.is_dir()
+        for name in SKILL_NAMES:
+            link = skills_dir / name
+            assert link.is_symlink()
+            assert link.resolve() == (_get_skills_source_dir() / name).resolve()
+
+    def test_creates_skills_subdir_if_missing(self, tmp_path: Path) -> None:
+        claude_root = tmp_path / ".claude-fresh"
+        claude_root.mkdir()
+        skills_dir = claude_root / "skills"
+        assert not skills_dir.exists()
+
+        result = runner.invoke(app, ["setup-skills", "--target", str(claude_root)])
+        assert result.exit_code == 0
+        assert skills_dir.is_dir()
+        for name in SKILL_NAMES:
+            assert (skills_dir / name).is_symlink()
+
+    def test_conflict_detection_with_target(self, tmp_path: Path) -> None:
+        claude_root = tmp_path / ".claude-conflict"
+        skills_dir = claude_root / "skills"
+        skills_dir.mkdir(parents=True)
+
+        name = SKILL_NAMES[0]
+        (skills_dir / name).write_text("not a skill")
+
+        result = runner.invoke(app, ["setup-skills", "--target", str(claude_root)])
+        assert result.exit_code == 0
+        assert "not a symlink" in result.output
+        assert (skills_dir / name).read_text() == "not a skill"
+
+    def test_idempotent_with_target(self, tmp_path: Path) -> None:
+        claude_root = tmp_path / ".claude-idem"
+        claude_root.mkdir()
+
+        runner.invoke(app, ["setup-skills", "--target", str(claude_root)])
+        result = runner.invoke(app, ["setup-skills", "--target", str(claude_root)])
+        assert result.exit_code == 0
+        for name in SKILL_NAMES:
+            assert f"Linked {name}" not in result.output
+
+    def test_default_unchanged_without_target(self, skills_env: Path) -> None:
+        """Without --target the existing monkeypatched default is used."""
+        result = runner.invoke(app, ["setup-skills"])
+        assert result.exit_code == 0
+        for name in SKILL_NAMES:
+            assert (skills_env / name).is_symlink()
+
+
+class TestRemoveSkillsTarget:
+    """Tests for remove-skills --target using real temp directories."""
+
+    def test_removes_forge_symlinks_at_target(self, tmp_path: Path) -> None:
+        claude_root = tmp_path / ".claude-acme"
+        claude_root.mkdir()
+
+        runner.invoke(app, ["setup-skills", "--target", str(claude_root)])
+        skills_dir = claude_root / "skills"
+        for name in SKILL_NAMES:
+            assert (skills_dir / name).is_symlink()
+
+        result = runner.invoke(app, ["remove-skills", "--target", str(claude_root)])
+        assert result.exit_code == 0
+        for name in SKILL_NAMES:
+            assert not (skills_dir / name).exists()
+            assert f"Removed {name}" in result.output
+
+    def test_noop_when_target_does_not_exist(self, tmp_path: Path) -> None:
+        nonexistent = tmp_path / "no-such-root"
+
+        result = runner.invoke(app, ["remove-skills", "--target", str(nonexistent)])
+        assert result.exit_code == 0
+        assert result.output.strip() == ""
+        assert not nonexistent.exists()
+
+    def test_leaves_non_forge_symlinks_at_target(self, tmp_path: Path) -> None:
+        claude_root = tmp_path / ".claude-other"
+        skills_dir = claude_root / "skills"
+        skills_dir.mkdir(parents=True)
+
+        other_dir = tmp_path / "other-skill"
+        other_dir.mkdir()
+        for name in SKILL_NAMES:
+            (skills_dir / name).symlink_to(other_dir)
+
+        result = runner.invoke(app, ["remove-skills", "--target", str(claude_root)])
+        assert result.exit_code == 0
+        for name in SKILL_NAMES:
+            assert (skills_dir / name).is_symlink()
+            assert (skills_dir / name).readlink() == other_dir
