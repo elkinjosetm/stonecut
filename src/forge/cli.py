@@ -255,16 +255,35 @@ def _get_skills_source_dir() -> Path:
     return Path(__file__).resolve().parent / "skills"
 
 
-def _get_skills_target_dir(*, create: bool = True) -> Path:
-    """Return ~/.claude/skills/, optionally creating it."""
-    target = Path.home() / ".claude" / "skills"
+def _get_skills_target_dir(
+    *, create: bool = True, claude_root: Path | None = None
+) -> Path:
+    """Return the skills directory, optionally creating it.
+
+    When *claude_root* is provided the skills directory is
+    ``claude_root / "skills"``; otherwise it defaults to
+    ``~/.claude/skills/``.
+    """
+    if claude_root is not None:
+        target = Path(claude_root).expanduser() / "skills"
+    else:
+        target = Path.home() / ".claude" / "skills"
     if create:
         target.mkdir(parents=True, exist_ok=True)
     return target
 
 
 @app.command("setup-skills")
-def setup_skills() -> None:
+def setup_skills(
+    target: Path | None = typer.Option(
+        None,
+        "--target",
+        help=(
+            "Claude root path (e.g. ~/.claude-acme)."
+            " Skills are installed into <target>/skills/."
+        ),
+    ),
+) -> None:
     """Install Forge skills as symlinks into ~/.claude/skills/."""
     source_dir = _get_skills_source_dir()
 
@@ -272,7 +291,7 @@ def setup_skills() -> None:
         typer.echo(f"Error: skills directory not found at {source_dir}", err=True)
         raise typer.Exit(code=1)
 
-    target_dir = _get_skills_target_dir()
+    target_dir = _get_skills_target_dir(claude_root=target)
 
     for name in SKILL_NAMES:
         source = source_dir / name
@@ -305,10 +324,19 @@ def setup_skills() -> None:
 
 
 @app.command("remove-skills")
-def remove_skills() -> None:
+def remove_skills(
+    target: Path | None = typer.Option(
+        None,
+        "--target",
+        help=(
+            "Claude root path (e.g. ~/.claude-acme)."
+            " Skills are removed from <target>/skills/."
+        ),
+    ),
+) -> None:
     """Remove Forge skill symlinks from ~/.claude/skills/."""
     source_dir = _get_skills_source_dir()
-    target_dir = _get_skills_target_dir(create=False)
+    target_dir = _get_skills_target_dir(create=False, claude_root=target)
     if not target_dir.is_dir():
         return
 
