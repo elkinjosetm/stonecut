@@ -13,30 +13,16 @@ Steps 1–3 are Claude Code skills installed via `forge setup-skills`. Step 4 is
 
 ## Installation
 
-### Quick install (recommended)
-
-```sh
-brew install pipx
-pipx install git+https://github.com/elkinjosetm/prd-forge.git
-```
-
-This makes the `forge` command globally available — no venv activation needed. Then install the Claude Code skills:
-
-```sh
-forge setup-skills
-```
-
-### Development install
+### Install from source (recommended)
 
 ```sh
 git clone https://github.com/elkinjosetm/prd-forge.git
 cd prd-forge
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+brew install pipx   # if you don't have pipx yet
+pipx install -e .
 ```
 
-This installs in editable mode for contributors. You'll need to `source .venv/bin/activate` in each new shell session. Then install the Claude Code skills:
+This makes the `forge` command globally available — no venv activation needed. Because it's an editable install, pulling the latest `main` automatically updates the CLI. Then install the Claude Code skills:
 
 ```sh
 forge setup-skills
@@ -45,6 +31,8 @@ forge setup-skills
 ### Dev dependencies and hooks
 
 ```sh
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e ".[dev]"
 git config core.hooksPath .githooks
 ```
@@ -137,10 +125,17 @@ forge setup-skills
 
 This creates symlinks in `~/.claude/skills/` pointing to the installed package. Once linked, they're available as `/forge:interview`, `/forge:prd`, and `/forge:issues` in any Claude Code session.
 
+For non-default Claude Code installations, pass `--target` with the Claude root path:
+
+```sh
+forge setup-skills --target ~/.claude-acme
+```
+
 To remove the symlinks:
 
 ```sh
-forge remove-skills
+forge remove-skills              # default (~/.claude)
+forge remove-skills --target ~/.claude-acme
 ```
 
 ## Prerequisites
