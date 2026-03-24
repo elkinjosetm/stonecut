@@ -42,6 +42,15 @@ This installs in editable mode for contributors. You'll need to `source .venv/bi
 forge setup-skills
 ```
 
+### Dev dependencies and hooks
+
+```sh
+pip install -e ".[dev]"
+git config core.hooksPath .githooks
+```
+
+This installs `ruff` and `pytest`, and activates a pre-commit hook that runs lint and format checks before each commit.
+
 ## Usage
 
 Forge has two subcommands (`spec` for local specs, `prd` for GitHub PRDs) and two execution modes (`once` for interactive, `afk` for autonomous).
