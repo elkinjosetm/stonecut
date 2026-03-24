@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from importlib.metadata import version
 from pathlib import Path
 
 import questionary
@@ -26,10 +27,31 @@ from forge.runner import IterationResult, run_afk_loop, run_interactive
 
 SKILL_NAMES = ["forge:interview", "forge:prd", "forge:issues"]
 
+
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(f"forge {version('prd-forge')}")
+        raise typer.Exit()
+
+
 app = typer.Typer(
     help="Forge — execute PRD-driven development workflows using Claude Code.",
     add_completion=False,
 )
+
+
+@app.callback()
+def main(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        help="Show version and exit.",
+        callback=_version_callback,
+        is_eager=True,
+    ),
+) -> None:
+    """Forge — execute PRD-driven development workflows using Claude Code."""
 
 
 class Mode(str, Enum):
