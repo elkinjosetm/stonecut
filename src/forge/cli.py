@@ -12,6 +12,7 @@ import typer
 from forge.git import (
     checkout_or_create_branch,
     create_pr,
+    default_branch,
     ensure_clean_tree,
     push_branch,
 )
@@ -87,7 +88,7 @@ def _pre_execution(suggested_branch: str) -> tuple[str, str]:
 
     base_branch = questionary.text(
         "Base branch / PR target:",
-        default="main",
+        default=default_branch(),
     ).unsafe_ask()
 
     checkout_or_create_branch(branch)

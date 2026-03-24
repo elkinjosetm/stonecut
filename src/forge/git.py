@@ -7,6 +7,24 @@ import subprocess
 import typer
 
 
+def default_branch() -> str:
+    """Detect the remote's default branch, falling back to 'main'."""
+    result = subprocess.run(
+        ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        # refs/remotes/origin/main → main
+        ref = result.stdout.strip()
+        prefix = "refs/remotes/origin/"
+        if ref.startswith(prefix):
+            branch = ref[len(prefix) :]
+            if branch:
+                return branch
+    return "main"
+
+
 def ensure_clean_tree() -> None:
     """Error if the working tree has uncommitted changes."""
     result = subprocess.run(

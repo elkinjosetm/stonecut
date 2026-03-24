@@ -33,6 +33,14 @@ Slices may be 'HITL' or 'AFK'. HITL slices require human interaction, such as an
 - Prefer many thin slices over few thick ones
 </vertical-slice-rules>
 
+#### Documentation Impact check
+
+Inspect the PRD's **Documentation Impact** section to determine whether documentation work is needed:
+
+- **Non-trivial changes** (new README sections, updated usage examples, new docs/ pages): generate a **dedicated documentation issue** — typically the last or near-last slice, since it depends on the feature being built.
+- **Trivial changes** (adding one line to a table, fixing a version number): fold the doc update into the relevant feature slice's acceptance criteria instead of creating a separate issue.
+- **No changes needed**: no action required — the PRD author already stated why.
+
 ### 4. Quiz the user
 
 Present the proposed breakdown as a numbered list. For each slice, show:

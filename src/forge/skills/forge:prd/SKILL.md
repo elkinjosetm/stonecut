@@ -41,7 +41,20 @@ Ask the user where to save the PRD:
 
 If the project already has a `specs/` directory, default to suggesting local. Otherwise, just ask.
 
-### 6. Write the PRD
+### 6. Documentation impact check
+
+Before writing the PRD, ensure that documentation impact has been explicitly addressed. Based on everything you've learned from the interview and codebase exploration, analyze which user-facing documentation artifacts (README, CLI help text, docs/ content) would be affected by these changes.
+
+Present your assessment to the user for confirmation:
+
+- If changes are needed, list the specific artifacts and what would need updating.
+- If no changes are needed, state why (e.g., "Internal refactor — no user-facing behavior changes") and ask the user to confirm.
+
+Record the confirmed answer for inclusion in the PRD's Documentation Impact section.
+
+This step is a gate — do not proceed to writing the PRD until documentation impact is resolved.
+
+### 7. Write the PRD
 
 Once you have a complete understanding of the problem and solution, write the PRD using the template below and save it to the chosen destination.
 
@@ -88,6 +101,16 @@ A list of testing decisions that were made. Include:
 - A description of what makes a good test (only test external behavior, not implementation details)
 - Which modules will be tested
 - Prior art for the tests (i.e. similar types of tests in the codebase)
+
+## Documentation Impact
+
+Which user-facing documentation artifacts are affected by these changes:
+
+- **README** — Which sections need adding or updating?
+- **CLI help text** — Are commands, flags, or usage examples changing?
+- **docs/ content** — Are there deeper documentation files that need updating?
+
+If no documentation changes are needed, state why (e.g., "Internal refactor — no user-facing behavior changes"). This assessment should be provided by the model based on its analysis and confirmed by the user during the interview.
 
 ## Out of Scope
 
