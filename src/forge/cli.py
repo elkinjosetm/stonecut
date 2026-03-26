@@ -5,6 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from importlib.metadata import version
 from pathlib import Path
+from typing import cast
 
 import questionary
 import typer
@@ -282,9 +283,9 @@ def run(
     """Execute issues from a local PRD or GitHub PRD."""
     source_kind, source_value = _validate_run_source(local, github)
     if source_kind == "local":
-        _run_local(source_value, mode, iterations)
+        _run_local(cast(str, source_value), mode, iterations)
         return
-    _run_github(source_value, mode, iterations)
+    _run_github(cast(int, source_value), mode, iterations)
 
 
 def _get_skills_source_dir() -> Path:
