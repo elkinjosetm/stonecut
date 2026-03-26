@@ -4,12 +4,13 @@ A CLI that drives PRD-driven development with Claude Code. You write the PRD, Fo
 
 ## Workflow
 
-1. **`/forge:interview`** — Stress-test your idea. Get grilled on the plan until it's solid.
-2. **`/forge:prd`** — Turn the validated idea into a PRD with clear scope, constraints, and architecture.
-3. **`/forge:issues`** — Break the PRD into independently-grabbable issues (local markdown files or GitHub sub-issues).
-4. **`forge`** — Execute the issues sequentially with Claude Code.
+1. **Idea** — Create a GitHub issue labeled `roadmap` to capture the idea.
+2. **`/forge:interview`** — Stress-test the idea. Get grilled on the plan until it's solid.
+3. **`/forge:prd`** — Turn the validated idea into a PRD. Closes the roadmap issue and creates a new `prd`-labeled issue with the full spec.
+4. **`/forge:issues`** — Break the PRD into independently-grabbable issues (local markdown files or GitHub sub-issues).
+5. **`forge run`** — Execute the issues sequentially with Claude Code.
 
-Steps 1–3 are Claude Code skills installed via `forge setup-skills`. Step 4 is the Forge CLI.
+Steps 2–4 are Claude Code skills installed via `forge setup-skills`. Step 5 is the Forge CLI.
 
 ## Installation
 

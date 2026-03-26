@@ -143,6 +143,16 @@ Skills remain as Claude Code skills. They are not invoked by the CLI on day one 
 
 ---
 
-## Roadmap
+## Idea → Execution Pipeline
 
-Ideas and future work are tracked as [GitHub issues labeled `roadmap`](https://github.com/elkinjosetm/prd-forge/labels/roadmap). Once an idea is interviewed and spec'd, it gets the `prd` label and becomes ready to execute.
+Ideas flow through a label-driven pipeline tracked entirely in GitHub issues:
+
+1. **`roadmap`** — Raw idea. Created as a GitHub issue with the `roadmap` label.
+2. **Interview** — Stress-test the idea via `forge:interview`. Discussion happens on the roadmap issue.
+3. **`prd`** — Once interviewed, the roadmap issue is closed and a new issue is created with the `prd` label containing the full spec. The PRD links back to the roadmap issue for history.
+4. **Issues** — The PRD is broken into sub-issues (via `forge:issues`), either as local markdown files or GitHub sub-issues.
+5. **Execute** — `forge run` picks up the issues and implements them.
+
+This keeps each artifact (idea, spec, implementation tickets) as a separate issue with a clear purpose and traceable lineage.
+
+See [GitHub issues labeled `roadmap`](https://github.com/elkinjosetm/prd-forge/labels/roadmap) for current ideas.
