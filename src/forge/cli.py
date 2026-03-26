@@ -5,6 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from importlib.metadata import version
 from pathlib import Path
+from typing import cast
 
 import questionary
 import typer
@@ -141,26 +142,9 @@ def _validate_iterations(mode: Mode, iterations_raw: str | None) -> int | str | 
     return iterations
 
 
-@app.command()
-def spec(
-    name: str = typer.Argument(
-        help="Name of the local spec (looks in .forge/<name>/)."
-    ),
-    mode: Mode = typer.Option(
-        ...,
-        "--mode",
-        "-m",
-        help="Execution mode: 'once' (interactive) or 'afk' (autonomous).",
-    ),
-    iterations: str | None = typer.Option(
-        None,
-        "--iterations",
-        "-i",
-        help="Number of issues to process, or 'all'. Required for afk mode.",
-    ),
-) -> None:
-    """Execute issues from a local spec."""
-    parsed_iterations = _validate_iterations(mode, iterations)
+def _run_local(name: str, mode: Mode, iterations_raw: str | None) -> None:
+    """Execute issues from a local PRD at .forge/<name>/."""
+    parsed_iterations = _validate_iterations(mode, iterations_raw)
 
     source = LocalSource(name)
     branch, base_branch = _pre_execution(f"feature/{name}")
@@ -208,24 +192,9 @@ def spec(
             )
 
 
-@app.command()
-def prd(
-    number: int = typer.Argument(help="GitHub PRD issue number."),
-    mode: Mode = typer.Option(
-        ...,
-        "--mode",
-        "-m",
-        help="Execution mode: 'once' (interactive) or 'afk' (autonomous).",
-    ),
-    iterations: str | None = typer.Option(
-        None,
-        "--iterations",
-        "-i",
-        help="Number of issues to process, or 'all'. Required for afk mode.",
-    ),
-) -> None:
+def _run_github(number: int, mode: Mode, iterations_raw: str | None) -> None:
     """Execute issues from a GitHub PRD."""
-    parsed_iterations = _validate_iterations(mode, iterations)
+    parsed_iterations = _validate_iterations(mode, iterations_raw)
 
     source = GitHubSource(number)
     branch, base_branch = _pre_execution(f"prd/{number}")
@@ -271,6 +240,52 @@ def prd(
                 pr_title=f"Forge: PRD #{number}",
                 prd_number=number,
             )
+
+
+def _validate_run_source(
+    local: str | None, github: int | None
+) -> tuple[str, str | int]:
+    """Validate mutually exclusive source options for `forge run`."""
+    if local is not None and github is not None:
+        raise typer.BadParameter("Use exactly one of --local or --github.")
+    if local is None and github is None:
+        raise typer.BadParameter("One of --local or --github is required.")
+    if local is not None:
+        return "local", local
+    return "github", github
+
+
+@app.command()
+def run(
+    local: str | None = typer.Option(
+        None,
+        "--local",
+        help="Local PRD name. Looks in .forge/<name>/ for prd.md and issues/.",
+    ),
+    github: int | None = typer.Option(
+        None,
+        "--github",
+        help="GitHub PRD issue number.",
+    ),
+    mode: Mode = typer.Option(
+        ...,
+        "--mode",
+        "-m",
+        help="Execution mode: 'once' (interactive) or 'afk' (autonomous).",
+    ),
+    iterations: str | None = typer.Option(
+        None,
+        "--iterations",
+        "-i",
+        help="Number of issues to process, or 'all'. Required for afk mode.",
+    ),
+) -> None:
+    """Execute issues from a local PRD or GitHub PRD."""
+    source_kind, source_value = _validate_run_source(local, github)
+    if source_kind == "local":
+        _run_local(cast(str, source_value), mode, iterations)
+        return
+    _run_github(cast(int, source_value), mode, iterations)
 
 
 def _get_skills_source_dir() -> Path:

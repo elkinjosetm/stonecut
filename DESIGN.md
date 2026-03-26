@@ -8,13 +8,13 @@ This document captures the design decisions for the initial build and future roa
 
 - **Project name:** Forge (repo: forge-orchestrator)
 - **CLI command:** `forge`
-- **Rationale:** A PRD is a blueprint, issues are the pieces, the tool forges them into reality. Works naturally across subcommands: `forge spec`, `forge prd`, `forge status`.
+- **Rationale:** A PRD is a blueprint, issues are the pieces, the tool forges them into reality. The primary execution entry point is `forge run`, with source selection handled by flags.
 
 ## Day One — CLI Commands
 
 ```
-forge spec <name> -m <once|afk> [-i <N|all>]
-forge prd <number> -m <once|afk> [-i <N|all>]
+forge run --local <name> -m <once|afk> [-i <N|all>]
+forge run --github <number> -m <once|afk> [-i <N|all>]
 ```
 
 ### Flags
@@ -30,8 +30,8 @@ forge prd <number> -m <once|afk> [-i <N|all>]
 
 ### Sources
 
-- **`forge spec <name>`** — local spec. Looks in `.forge/<name>/` for `prd.md` and `issues/`.
-- **`forge prd <number>`** — GitHub PRD. Issue number on the current repo, tasks are sub-issues.
+- **`forge run --local <name>`** — local PRD. Looks in `.forge/<name>/` for `prd.md` and `issues/`.
+- **`forge run --github <number>`** — GitHub PRD. Issue number on the current repo, tasks are sub-issues.
 
 ## Modes
 
@@ -72,7 +72,7 @@ Before spawning the first Claude Code session, Forge prompts the user:
 1. **Branch name** — with a sensible suggestion (e.g., `prd/42` or `feature/<spec-name>`).
 2. **Base branch / PR target** — suggests `main`.
 
-Same prompts for both `spec` and `prd` modes. Simple `questionary` prompts, no AI needed.
+Same prompts for both local and GitHub sources. Simple `questionary` prompts, no AI needed.
 
 ## PR Report
 
@@ -223,7 +223,7 @@ Uses `questionary` prompts to guide the user step by step.
 
 ### Multiple Remote Sources
 
-Evolve `forge prd` to support sources beyond GitHub (Linear, Jira, etc.). May require revisiting the `spec`/`prd` subcommand naming to something like `local`/`remote` with source identifiers.
+Evolve `forge run --github` to support sources beyond GitHub (Linear, Jira, etc.), likely by expanding source flags or adding a provider flag.
 
 ### PyPI Publishing
 
