@@ -73,8 +73,6 @@ forge run --github 42 -m afk -i 5
 forge run --github 42 -m afk -i all
 ```
 
-Compatibility note: `forge spec <name>` and `forge prd <number>` still work as aliases, but `forge run` is now the primary interface.
-
 ### Flags
 
 | Flag | Short | Required | Description |

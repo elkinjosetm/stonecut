@@ -287,48 +287,6 @@ def run(
     _run_github(source_value, mode, iterations)
 
 
-@app.command(hidden=True)
-def spec(
-    name: str = typer.Argument(
-        help="Name of the local spec (looks in .forge/<name>/)."
-    ),
-    mode: Mode = typer.Option(
-        ...,
-        "--mode",
-        "-m",
-        help="Execution mode: 'once' (interactive) or 'afk' (autonomous).",
-    ),
-    iterations: str | None = typer.Option(
-        None,
-        "--iterations",
-        "-i",
-        help="Number of issues to process, or 'all'. Required for afk mode.",
-    ),
-) -> None:
-    """Compatibility alias for `forge run --local <name>`."""
-    _run_local(name, mode, iterations)
-
-
-@app.command(hidden=True)
-def prd(
-    number: int = typer.Argument(help="GitHub PRD issue number."),
-    mode: Mode = typer.Option(
-        ...,
-        "--mode",
-        "-m",
-        help="Execution mode: 'once' (interactive) or 'afk' (autonomous).",
-    ),
-    iterations: str | None = typer.Option(
-        None,
-        "--iterations",
-        "-i",
-        help="Number of issues to process, or 'all'. Required for afk mode.",
-    ),
-) -> None:
-    """Compatibility alias for `forge run --github <number>`."""
-    _run_github(number, mode, iterations)
-
-
 def _get_skills_source_dir() -> Path:
     """Return the path to the skills/ directory shipped with this package."""
     return Path(__file__).resolve().parent / "skills"

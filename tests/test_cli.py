@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from typer.testing import CliRunner
 
 import forge.cli as cli
@@ -52,59 +53,36 @@ class TestRunCommand:
             "iterations": "all",
         }
 
-    def test_requires_exactly_one_source(self) -> None:
-        result = runner.invoke(app=cli.app, args=["run", "-m", "once"])
-
-        assert result.exit_code != 0
-        assert "One of --local or --github is required." in result.output
-
-    def test_rejects_multiple_sources(self) -> None:
-        result = runner.invoke(
-            app=cli.app,
-            args=["run", "--local", "demo", "--github", "42", "-m", "once"],
-        )
-
-        assert result.exit_code != 0
-        assert "Use exactly one of --local or --github." in result.output
-
-    def test_help_shows_run_not_legacy_aliases(self) -> None:
+    def test_help_shows_run(self) -> None:
         result = runner.invoke(app=cli.app, args=["--help"])
 
         assert result.exit_code == 0
-        assert "│ run" in result.output
-        assert "│ spec" not in result.output
-        assert "│ prd" not in result.output
+        assert "run" in result.output
 
 
-class TestLegacyAliases:
-    def test_spec_alias_still_works(self, monkeypatch) -> None:
-        called: dict[str, object] = {}
+class TestRunSourceValidation:
+    def test_requires_one_source(self) -> None:
+        with pytest.raises(cli.typer.BadParameter, match="required"):
+            cli._validate_run_source(None, None)
 
-        def fake_run_local(name: str, mode: cli.Mode, iterations: str | None) -> None:
-            called["name"] = name
-            called["mode"] = mode
-            called["iterations"] = iterations
+    def test_rejects_multiple_sources(self) -> None:
+        with pytest.raises(cli.typer.BadParameter, match="exactly one"):
+            cli._validate_run_source("demo", 42)
 
-        monkeypatch.setattr(cli, "_run_local", fake_run_local)
+    def test_accepts_local_source(self) -> None:
+        assert cli._validate_run_source("demo", None) == ("local", "demo")
 
+    def test_accepts_github_source(self) -> None:
+        assert cli._validate_run_source(None, 42) == ("github", 42)
+
+
+class TestLegacyCommandRemoval:
+    def test_spec_command_is_removed(self) -> None:
         result = runner.invoke(app=cli.app, args=["spec", "demo", "-m", "once"])
 
-        assert result.exit_code == 0
-        assert called == {"name": "demo", "mode": cli.Mode.once, "iterations": None}
+        assert result.exit_code != 0
 
-    def test_prd_alias_still_works(self, monkeypatch) -> None:
-        called: dict[str, object] = {}
-
-        def fake_run_github(
-            number: int, mode: cli.Mode, iterations: str | None
-        ) -> None:
-            called["number"] = number
-            called["mode"] = mode
-            called["iterations"] = iterations
-
-        monkeypatch.setattr(cli, "_run_github", fake_run_github)
-
+    def test_prd_command_is_removed(self) -> None:
         result = runner.invoke(app=cli.app, args=["prd", "42", "-m", "once"])
 
-        assert result.exit_code == 0
-        assert called == {"number": 42, "mode": cli.Mode.once, "iterations": None}
+        assert result.exit_code != 0
