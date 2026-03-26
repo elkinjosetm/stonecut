@@ -1,6 +1,6 @@
 # PRD Forge
 
-A CLI that drives PRD-driven development with Claude Code. You write the spec, Forge executes the issues one by one.
+A CLI that drives PRD-driven development with Claude Code. You write the PRD, Forge executes the issues one by one.
 
 ## Workflow
 
@@ -45,33 +45,35 @@ This installs `ruff` and `pytest`, and activates a pre-commit hook that runs lin
 
 ## Usage
 
-Forge has two subcommands (`spec` for local specs, `prd` for GitHub PRDs) and two execution modes (`once` for interactive, `afk` for autonomous).
+Forge has one execution command (`run`) with two sources (`--local` for local PRDs, `--github` for GitHub PRDs) and two execution modes (`once` for interactive, `afk` for autonomous).
 
-### `forge spec` — Local specs
+### `forge run --local` — Local PRDs
 
 ```sh
 # Interactive — pick the next issue, work on it with Claude in real time
-forge spec my-feature -m once
+forge run --local my-feature -m once
 
 # Autonomous — run 5 issues headless, then push and create a PR
-forge spec my-feature -m afk -i 5
+forge run --local my-feature -m afk -i 5
 
 # Run all remaining issues
-forge spec my-feature -m afk -i all
+forge run --local my-feature -m afk -i all
 ```
 
-### `forge prd` — GitHub PRDs
+### `forge run --github` — GitHub PRDs
 
 ```sh
 # Interactive — pick the next open sub-issue
-forge prd 42 -m once
+forge run --github 42 -m once
 
 # Autonomous — run 5 issues headless, then push and create a PR
-forge prd 42 -m afk -i 5
+forge run --github 42 -m afk -i 5
 
 # Run all remaining sub-issues
-forge prd 42 -m afk -i all
+forge run --github 42 -m afk -i all
 ```
+
+Compatibility note: `forge spec <name>` and `forge prd <number>` still work as aliases, but `forge run` is now the primary interface.
 
 ### Flags
 
@@ -96,9 +98,9 @@ Forge automatically pushes the branch, creates a PR, and includes a Forge Report
 
 ## Modes
 
-### Local mode (`forge spec <name>`)
+### Local mode (`forge run --local <name>`)
 
-Expects a spec directory at `.forge/<name>/` with this structure:
+Expects a local PRD directory at `.forge/<name>/` with this structure:
 
 ```
 .forge/my-feature/
@@ -111,7 +113,7 @@ Expects a spec directory at `.forge/<name>/` with this structure:
 └── progress.txt        # Auto-created: timestamped completion log
 ```
 
-### GitHub mode (`forge prd <number>`)
+### GitHub mode (`forge run --github <number>`)
 
 Works with GitHub issues instead of local files:
 
