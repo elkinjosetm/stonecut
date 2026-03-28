@@ -92,13 +92,14 @@ forge run --github 42 -m afk -i all
 Before starting, Forge:
 
 1. Checks for a clean working tree
-2. Prompts for a branch name (suggests `feature/<name>` or `prd/<number>`)
+2. Prompts for a branch name (suggests `forge/<slug>` across both modes: local uses the spec name, GitHub uses the PRD title slug, with `forge/issue-<number>` fallback)
 3. Prompts for a base branch / PR target (suggests `main`)
 4. Creates or checks out the branch
 
 ### After an `afk` run
 
 Forge automatically pushes the branch, creates a PR, and includes a Forge Report listing each issue with its status (completed or failed). Timing stats are printed per iteration and for the full session.
+In GitHub mode, the PR title defaults to the PRD issue title with a `PRD #<number>` fallback if the title is unavailable.
 
 ## Modes
 

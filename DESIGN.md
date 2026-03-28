@@ -69,7 +69,7 @@ The mode difference in spawning is handled by Forge (interactive vs `-p` flag), 
 
 Before spawning the first Claude Code session, Forge prompts the user:
 
-1. **Branch name** — with a sensible suggestion (e.g., `prd/42` or `feature/<spec-name>`).
+1. **Branch name** — with a sensible suggestion using the unified `forge/<slug>` convention. Local mode uses the spec name, GitHub mode uses the PRD title slug, and GitHub falls back to `forge/issue-<number>` when needed.
 2. **Base branch / PR target** — suggests `main`.
 
 Same prompts for both local and GitHub sources. Simple `questionary` prompts, no AI needed.
@@ -85,6 +85,8 @@ At the end of an `afk` run, Forge pushes the branch and creates a PR with a repo
 - #3 Auth middleware: failed (non-zero exit code)
 - #4 Frontend components: completed
 ```
+
+In GitHub mode, the PR title is the PRD issue title, with `PRD #<number>` as the fallback when the title is unavailable.
 
 ## Local Spec Structure
 

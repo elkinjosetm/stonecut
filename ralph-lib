@@ -185,7 +185,7 @@ close_github_issue() {
 
 setup_github_branch() {
 	local prd_num="$1"
-	local branch="prd/$prd_num"
+	local branch="forge/issue-$prd_num"
 
 	# Check for clean working tree
 	if ! git diff --quiet || ! git diff --cached --quiet; then

@@ -160,7 +160,7 @@ Do NOT close or modify the parent PRD issue (if it's a GitHub issue).
 
 ### 7. Configure execution (local files only)
 
-> **Note:** GitHub mode does not need a config.json. The forge scripts infer the branch (`prd/<issue-number>`) and commit format (`<description> (#<issue-number>)`) automatically from the PRD issue.
+> **Note:** GitHub mode does not need a config.json. Forge uses the unified `forge/<slug>` branch convention: GitHub derives the slug from the PRD title and falls back to `forge/issue-<number>` when needed. Commit format is inferred automatically as `<description> (#<issue-number>)`.
 
 After creating local issue files, configure how the forge scripts will execute this spec. Write a `config.json` to the spec directory:
 
