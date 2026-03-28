@@ -9,6 +9,15 @@ from dataclasses import dataclass
 
 
 @dataclass
+class GitHubPrd:
+    """Structured metadata for a GitHub-backed PRD issue."""
+
+    number: int
+    title: str
+    body: str
+
+
+@dataclass
 class GitHubIssue:
     """A single sub-issue from a GitHub PRD."""
 
@@ -93,6 +102,10 @@ class GitHubSource:
 
     def get_prd_content(self) -> str:
         """Fetch and return the PRD issue body."""
+        return self.get_prd().body
+
+    def get_prd(self) -> GitHubPrd:
+        """Fetch and return PRD issue metadata."""
         result = subprocess.run(
             [
                 "gh",
@@ -100,15 +113,18 @@ class GitHubSource:
                 "view",
                 str(self.prd_number),
                 "--json",
-                "body",
-                "-q",
-                ".body",
+                "title,body",
             ],
             capture_output=True,
             text=True,
             check=True,
         )
-        return result.stdout.strip()
+        data = json.loads(result.stdout)
+        return GitHubPrd(
+            number=self.prd_number,
+            title=(data.get("title") or "").strip(),
+            body=(data.get("body") or "").strip(),
+        )
 
     def _fetch_sub_issues(self) -> list[dict]:
         """Fetch sub-issues of the PRD via the GraphQL API."""

@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from forge.github import GitHubIssue, GitHubSource
+from forge.github import GitHubIssue, GitHubPrd, GitHubSource
 
 
 def _graphql_response(nodes: list[dict]) -> str:
@@ -218,10 +218,43 @@ class TestIssueClosing:
 
 
 class TestContentFetching:
+    def test_fetches_prd_metadata(self, source):
+        with patch("forge.github.subprocess.run") as mock_run:
+            mock_run.return_value = CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=json.dumps({"title": "Improve onboarding flow", "body": "PRD"}),
+                stderr="",
+            )
+            prd = source.get_prd()
+            assert prd == GitHubPrd(
+                number=42,
+                title="Improve onboarding flow",
+                body="PRD",
+            )
+            mock_run.assert_called_once_with(
+                [
+                    "gh",
+                    "issue",
+                    "view",
+                    "42",
+                    "--json",
+                    "title,body",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
     def test_fetches_prd_body(self, source):
         with patch("forge.github.subprocess.run") as mock_run:
             mock_run.return_value = CompletedProcess(
-                args=[], returncode=0, stdout="PRD body content\n", stderr=""
+                args=[],
+                returncode=0,
+                stdout=json.dumps(
+                    {"title": "Improve onboarding flow", "body": "PRD body content\n"}
+                ),
+                stderr="",
             )
             content = source.get_prd_content()
             assert content == "PRD body content"
@@ -232,9 +265,7 @@ class TestContentFetching:
                     "view",
                     "42",
                     "--json",
-                    "body",
-                    "-q",
-                    ".body",
+                    "title,body",
                 ],
                 capture_output=True,
                 text=True,

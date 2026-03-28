@@ -139,7 +139,7 @@ elif [ "$MODE" = "github" ]; then
 	require_gh
 	PRD_NUM=$(find_prd)
 	echo "PRD: #$PRD_NUM"
-	setup_github_branch "$PRD_NUM"
+	setup_github_branch "$PRD_NUM" "$(suggest_github_branch "$PRD_NUM")"
 
 	# Find next open sub-issue
 	NEXT_ISSUE=$(get_next_github_issue "$PRD_NUM")

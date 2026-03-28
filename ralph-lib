@@ -132,6 +132,31 @@ find_prd() {
 	echo "$prd_issues" | head -1 | cut -d'|' -f1
 }
 
+slugify_branch_component() {
+	printf '%s' "$1" |
+		tr '[:upper:]' '[:lower:]' |
+		sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//; s/-+/-/g'
+}
+
+get_github_prd_title() {
+	local prd_num="$1"
+	local repo
+	repo=$(get_repo_nwo)
+	gh api "repos/$repo/issues/$prd_num" --jq '.title' 2>/dev/null
+}
+
+suggest_github_branch() {
+	local prd_num="$1"
+	local title slug
+	title=$(get_github_prd_title "$prd_num")
+	slug=$(slugify_branch_component "$title")
+	if [ -n "$slug" ]; then
+		echo "forge/$slug"
+	else
+		echo "forge/issue-$prd_num"
+	fi
+}
+
 get_github_sub_issues() {
 	local prd_num="$1"
 	local repo
@@ -185,7 +210,7 @@ close_github_issue() {
 
 setup_github_branch() {
 	local prd_num="$1"
-	local branch="prd/$prd_num"
+	local branch="${2:-forge/issue-$prd_num}"
 
 	# Check for clean working tree
 	if ! git diff --quiet || ! git diff --cached --quiet; then

@@ -2,12 +2,28 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import pytest
 from typer.testing import CliRunner
 
 import forge.cli as cli
 
 runner = CliRunner()
+
+
+@dataclass
+class FakeGitHubIssue:
+    number: int
+    title: str
+    body: str
+
+
+@dataclass
+class FakeGitHubPrd:
+    number: int
+    title: str
+    body: str
 
 
 class TestRunCommand:
@@ -86,3 +102,229 @@ class TestLegacyCommandRemoval:
         result = runner.invoke(app=cli.app, args=["prd", "42", "-m", "once"])
 
         assert result.exit_code != 0
+
+
+class TestGitHubNaming:
+    def test_local_once_uses_slugged_branch_suggestion(self, monkeypatch) -> None:
+        prompts: list[str] = []
+
+        class FakeSource:
+            def __init__(self, name: str) -> None:
+                assert name == "Customer Onboarding"
+
+            def get_next_issue(self):
+                return type(
+                    "FakeLocalIssue",
+                    (),
+                    {"number": 7, "filename": "issue.md", "content": "Issue body"},
+                )()
+
+            def get_remaining_count(self) -> tuple[int, int]:
+                return (1, 3)
+
+            def get_prd_content(self) -> str:
+                return "PRD body"
+
+            @property
+            def spec_dir(self) -> str:
+                return ".forge/Customer Onboarding"
+
+        monkeypatch.setattr(cli, "LocalSource", FakeSource)
+        monkeypatch.setattr(
+            cli,
+            "_pre_execution",
+            lambda suggested_branch: (
+                prompts.append(suggested_branch) or (suggested_branch, "main")
+            ),
+        )
+        monkeypatch.setattr(cli, "run_interactive", lambda prompt: None)
+
+        cli._run_local("Customer Onboarding", cli.Mode.once, None)
+
+        assert prompts == ["forge/customer-onboarding"]
+
+    def test_local_once_falls_back_when_slug_is_empty(self, monkeypatch) -> None:
+        prompts: list[str] = []
+
+        class FakeSource:
+            def __init__(self, name: str) -> None:
+                assert name == "!!!"
+
+            def get_next_issue(self):
+                return type(
+                    "FakeLocalIssue",
+                    (),
+                    {"number": 7, "filename": "issue.md", "content": "Issue body"},
+                )()
+
+            def get_remaining_count(self) -> tuple[int, int]:
+                return (1, 3)
+
+            def get_prd_content(self) -> str:
+                return "PRD body"
+
+            @property
+            def spec_dir(self) -> str:
+                return ".forge/!!!"
+
+        monkeypatch.setattr(cli, "LocalSource", FakeSource)
+        monkeypatch.setattr(
+            cli,
+            "_pre_execution",
+            lambda suggested_branch: (
+                prompts.append(suggested_branch) or (suggested_branch, "main")
+            ),
+        )
+        monkeypatch.setattr(cli, "run_interactive", lambda prompt: None)
+
+        cli._run_local("!!!", cli.Mode.once, None)
+
+        assert prompts == ["forge/spec"]
+
+    def test_github_once_uses_slugged_branch_suggestion(self, monkeypatch) -> None:
+        prompts: list[str] = []
+
+        class FakeSource:
+            def __init__(self, number: int) -> None:
+                assert number == 42
+
+            def get_prd(self) -> FakeGitHubPrd:
+                return FakeGitHubPrd(
+                    number=42,
+                    title="OAuth / SSO polish",
+                    body="PRD body",
+                )
+
+            def get_next_issue(self) -> FakeGitHubIssue:
+                return FakeGitHubIssue(number=7, title="Task", body="Issue body")
+
+            def get_remaining_count(self) -> tuple[int, int]:
+                return (1, 3)
+
+        monkeypatch.setattr(cli, "GitHubSource", FakeSource)
+        monkeypatch.setattr(
+            cli,
+            "_pre_execution",
+            lambda suggested_branch: (
+                prompts.append(suggested_branch) or (suggested_branch, "main")
+            ),
+        )
+        monkeypatch.setattr(
+            cli,
+            "run_interactive",
+            lambda prompt: prompts.append(prompt),
+        )
+
+        cli._run_github(42, cli.Mode.once, None)
+
+        assert prompts[0] == "forge/oauth-sso-polish"
+        assert "PRD body" in prompts[1]
+
+    def test_github_once_falls_back_to_issue_branch(self, monkeypatch) -> None:
+        prompts: list[str] = []
+
+        class FakeSource:
+            def __init__(self, number: int) -> None:
+                assert number == 42
+
+            def get_prd(self) -> FakeGitHubPrd:
+                return FakeGitHubPrd(number=42, title="!!!", body="PRD body")
+
+            def get_next_issue(self) -> FakeGitHubIssue:
+                return FakeGitHubIssue(number=7, title="Task", body="Issue body")
+
+            def get_remaining_count(self) -> tuple[int, int]:
+                return (1, 3)
+
+        monkeypatch.setattr(cli, "GitHubSource", FakeSource)
+        monkeypatch.setattr(
+            cli,
+            "_pre_execution",
+            lambda suggested_branch: (
+                prompts.append(suggested_branch) or (suggested_branch, "main")
+            ),
+        )
+        monkeypatch.setattr(cli, "run_interactive", lambda prompt: None)
+
+        cli._run_github(42, cli.Mode.once, None)
+
+        assert prompts == ["forge/issue-42"]
+
+    def test_github_afk_uses_prd_title_for_pr_title(self, monkeypatch) -> None:
+        captured: dict[str, object] = {}
+
+        class FakeSource:
+            def __init__(self, number: int) -> None:
+                assert number == 42
+
+            def get_prd(self) -> FakeGitHubPrd:
+                return FakeGitHubPrd(
+                    number=42,
+                    title="Improve onboarding flow",
+                    body="PRD body",
+                )
+
+        monkeypatch.setattr(cli, "GitHubSource", FakeSource)
+        monkeypatch.setattr(
+            cli, "_pre_execution", lambda suggested_branch: (suggested_branch, "main")
+        )
+        monkeypatch.setattr(
+            cli,
+            "run_afk_loop",
+            lambda **kwargs: [
+                cli.IterationResult(
+                    issue_number=7,
+                    issue_filename="Task",
+                    success=True,
+                    elapsed_seconds=1.0,
+                )
+            ],
+        )
+
+        def fake_push_and_create_pr(**kwargs) -> None:
+            captured.update(kwargs)
+
+        monkeypatch.setattr(cli, "_push_and_create_pr", fake_push_and_create_pr)
+
+        cli._run_github(42, cli.Mode.afk, "all")
+
+        assert captured["branch"] == "forge/improve-onboarding-flow"
+        assert captured["pr_title"] == "Improve onboarding flow"
+        assert captured["prd_number"] == 42
+
+    def test_github_afk_falls_back_to_prd_number_title(self, monkeypatch) -> None:
+        captured: dict[str, object] = {}
+
+        class FakeSource:
+            def __init__(self, number: int) -> None:
+                assert number == 42
+
+            def get_prd(self) -> FakeGitHubPrd:
+                return FakeGitHubPrd(number=42, title="", body="PRD body")
+
+        monkeypatch.setattr(cli, "GitHubSource", FakeSource)
+        monkeypatch.setattr(
+            cli, "_pre_execution", lambda suggested_branch: (suggested_branch, "main")
+        )
+        monkeypatch.setattr(
+            cli,
+            "run_afk_loop",
+            lambda **kwargs: [
+                cli.IterationResult(
+                    issue_number=7,
+                    issue_filename="Task",
+                    success=True,
+                    elapsed_seconds=1.0,
+                )
+            ],
+        )
+
+        def fake_push_and_create_pr(**kwargs) -> None:
+            captured.update(kwargs)
+
+        monkeypatch.setattr(cli, "_push_and_create_pr", fake_push_and_create_pr)
+
+        cli._run_github(42, cli.Mode.afk, "all")
+
+        assert captured["branch"] == "forge/issue-42"
+        assert captured["pr_title"] == "PRD #42"

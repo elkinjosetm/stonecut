@@ -19,6 +19,7 @@ from forge.git import (
 )
 from forge.github import GitHubSource
 from forge.local import LocalSource
+from forge.naming import slugify_branch_component
 from forge.prompt import (
     render_github_afk,
     render_github_once,
@@ -147,7 +148,9 @@ def _run_local(name: str, mode: Mode, iterations_raw: str | None) -> None:
     parsed_iterations = _validate_iterations(mode, iterations_raw)
 
     source = LocalSource(name)
-    branch, base_branch = _pre_execution(f"feature/{name}")
+    local_slug = slugify_branch_component(name)
+    suggested_branch = f"forge/{local_slug}" if local_slug else "forge/spec"
+    branch, base_branch = _pre_execution(suggested_branch)
 
     if mode == Mode.once:
         issue = source.get_next_issue()
@@ -197,7 +200,11 @@ def _run_github(number: int, mode: Mode, iterations_raw: str | None) -> None:
     parsed_iterations = _validate_iterations(mode, iterations_raw)
 
     source = GitHubSource(number)
-    branch, base_branch = _pre_execution(f"prd/{number}")
+    prd = source.get_prd()
+    prd_slug = slugify_branch_component(prd.title)
+    suggested_branch = f"forge/{prd_slug}" if prd_slug else f"forge/issue-{number}"
+    pr_title = prd.title or f"PRD #{number}"
+    branch, base_branch = _pre_execution(suggested_branch)
 
     if mode == Mode.once:
         issue = source.get_next_issue()
@@ -212,7 +219,7 @@ def _run_github(number: int, mode: Mode, iterations_raw: str | None) -> None:
         typer.echo("")
 
         prompt = render_github_once(
-            prd_content=source.get_prd_content(),
+            prd_content=prd.body,
             issue_number=issue.number,
             issue_title=issue.title,
             issue_content=issue.body,
@@ -220,7 +227,7 @@ def _run_github(number: int, mode: Mode, iterations_raw: str | None) -> None:
         run_interactive(prompt)
 
     elif mode == Mode.afk:
-        prd_content = source.get_prd_content()
+        prd_content = prd.body
         results = run_afk_loop(
             source=source,
             iterations=parsed_iterations,
@@ -237,7 +244,7 @@ def _run_github(number: int, mode: Mode, iterations_raw: str | None) -> None:
                 results=results,
                 branch=branch,
                 base_branch=base_branch,
-                pr_title=f"Forge: PRD #{number}",
+                pr_title=pr_title,
                 prd_number=number,
             )
 
