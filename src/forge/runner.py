@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import subprocess
-import sys
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 import typer
@@ -39,18 +38,6 @@ class IterationResult:
     success: bool
     elapsed_seconds: float
 
-
-def run_interactive(prompt: str) -> None:
-    """Spawn an interactive Claude Code session with the prompt piped to stdin.
-
-    Forge exits after spawning — the user takes over the session.
-    """
-    subprocess.run(
-        ["claude", "--allowedTools", "Bash,Edit,Read,Write,Glob,Grep"],
-        input=prompt,
-        text=True,
-    )
-    sys.exit(0)
 
 
 def run_headless(prompt: str) -> int:
