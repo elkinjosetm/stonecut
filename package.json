@@ -1,0 +1,25 @@
+{
+  "name": "prd-forge",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "forge": "./src/cli.ts"
+  },
+  "scripts": {
+    "lint": "eslint src/ tests/",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.10.0",
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.9",
+    "eslint": "^9.24.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.30.1"
+  }
+}

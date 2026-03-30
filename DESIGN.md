@@ -19,10 +19,10 @@ forge run --github <number> -i <N|all> [--runner <name>]
 
 ### Flags
 
-| Flag | Alias | Required | Description |
-|------|-------|----------|-------------|
-| `--iterations` | `-i` | Always | Number of issues to process, or `all` |
-| `--runner` | — | No | Agentic CLI runner to use (default: `claude`) |
+| Flag           | Alias | Required | Description                                   |
+| -------------- | ----- | -------- | --------------------------------------------- |
+| `--iterations` | `-i`  | Always   | Number of issues to process, or `all`         |
+| `--runner`     | —     | No       | Agentic CLI runner to use (default: `claude`) |
 
 - Missing required args produce an error with help text.
 - `--help` available on every command.
@@ -97,6 +97,7 @@ At the end of a run, Forge pushes the branch and creates a PR with a report:
 
 ```markdown
 ## Forge Report
+
 **Runner:** claude
 
 - #1 Setup database schema: completed

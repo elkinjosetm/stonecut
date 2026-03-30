@@ -1,0 +1,8 @@
+node_modules/
+dist/
+bun.lock
+.venv/
+__pycache__/
+*.egg-info/
+*.py
+.pytest_cache/

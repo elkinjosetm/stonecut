@@ -75,11 +75,11 @@ forge run --github 42 -i all
 
 ### Flags
 
-| Flag | Short | Required | Description |
-|------|-------|----------|-------------|
-| `--iterations` | `-i` | Always | Positive integer or `all`. |
-| `--runner` | — | No | Agentic CLI runner to use (`claude`, `codex`). Default: `claude`. |
-| `--version` | `-V` | — | Show version and exit. |
+| Flag           | Short | Required | Description                                                       |
+| -------------- | ----- | -------- | ----------------------------------------------------------------- |
+| `--iterations` | `-i`  | Always   | Positive integer or `all`.                                        |
+| `--runner`     | —     | No       | Agentic CLI runner to use (`claude`, `codex`). Default: `claude`. |
+| `--version`    | `-V`  | —        | Show version and exit.                                            |
 
 ### Pre-execution prompts
 

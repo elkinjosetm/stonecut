@@ -3,3 +3,6 @@
 __pycache__/
 *.egg-info/
 src/*.egg-info/
+node_modules/
+dist/
+bun.lock
