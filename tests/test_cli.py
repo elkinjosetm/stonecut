@@ -191,9 +191,7 @@ class TestForgeReport:
                 elapsed_seconds=1.0,
             )
         ]
-        report = cli._build_forge_report(
-            results, runner_name="claude", prd_number=42
-        )
+        report = cli._build_forge_report(results, runner_name="claude", prd_number=42)
         assert "Closes #42" in report
 
 

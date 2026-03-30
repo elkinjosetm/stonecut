@@ -19,7 +19,5 @@ def get_runner(name: str) -> Runner:
     cls = _RUNNERS.get(name)
     if cls is None:
         available = ", ".join(sorted(_RUNNERS))
-        raise ValueError(
-            f"Unknown runner '{name}'. Available runners: {available}"
-        )
+        raise ValueError(f"Unknown runner '{name}'. Available runners: {available}")
     return cls()

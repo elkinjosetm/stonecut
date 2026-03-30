@@ -103,9 +103,7 @@ def _build_forge_report(
             lines.append(f"- #{r.issue_number} {r.issue_filename}: completed")
         else:
             reason = r.error or "unknown error"
-            lines.append(
-                f"- #{r.issue_number} {r.issue_filename}: failed — {reason}"
-            )
+            lines.append(f"- #{r.issue_number} {r.issue_filename}: failed — {reason}")
 
     if prd_number is not None:
         lines.append("")

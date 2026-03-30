@@ -136,9 +136,7 @@ class TestClaudeRunner:
 
         def fake_run(*args, **kwargs):
             captured_args.append(args[0])
-            return _make_completed_process(
-                stdout=json.dumps({"subtype": "success"})
-            )
+            return _make_completed_process(stdout=json.dumps({"subtype": "success"}))
 
         monkeypatch.setattr(subprocess, "run", fake_run)
         ClaudeRunner().run("hello")
