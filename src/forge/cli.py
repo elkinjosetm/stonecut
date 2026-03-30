@@ -154,6 +154,7 @@ def _run_local(name: str, iterations_raw: str, runner_name: str) -> None:
         ),
         display_name=lambda issue: issue.filename,
         runner=runner_instance,
+        runner_name=runner_name,
     )
     if results:
         _push_and_create_pr(
@@ -189,6 +190,7 @@ def _run_github(number: int, iterations_raw: str, runner_name: str) -> None:
         ),
         display_name=lambda issue: issue.title,
         runner=runner_instance,
+        runner_name=runner_name,
     )
     if results:
         _push_and_create_pr(
@@ -235,7 +237,7 @@ def run(
     runner_name: str = typer.Option(
         "claude",
         "--runner",
-        help="Agentic CLI runner to use.",
+        help="Agentic CLI runner to use (available: claude, codex).",
     ),
 ) -> None:
     """Execute issues from a local PRD or GitHub PRD."""

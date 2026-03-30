@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from forge.runner import Runner
 from forge.runners.claude import ClaudeRunner
+from forge.runners.codex import CodexRunner
 
 _RUNNERS: dict[str, type] = {
     "claude": ClaudeRunner,
+    "codex": CodexRunner,
 }
 
 

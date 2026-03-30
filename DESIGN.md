@@ -153,7 +153,8 @@ forge/
 │       ├── prompt.py           # template loading and rendering
 │       ├── runners/
 │       │   ├── __init__.py     # get_runner() registry
-│       │   └── claude.py       # ClaudeRunner adapter
+│       │   ├── claude.py       # ClaudeRunner adapter
+│       │   └── codex.py        # CodexRunner adapter
 │       └── templates/
 │           └── execute.md      # prompt template
 └── skills/

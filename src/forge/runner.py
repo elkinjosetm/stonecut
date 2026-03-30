@@ -45,12 +45,15 @@ def run_afk_loop(
     render_prompt: Callable[[Any], str],
     display_name: Callable[[Any], str],
     runner: Runner,
+    runner_name: str = "claude",
 ) -> list[IterationResult]:
     """Run the autonomous loop over issues from any source.
 
     Uses the provided Runner instance to execute each issue's prompt.
     Works with both LocalSource and GitHubSource.
     """
+    typer.echo(f"Runner: {runner_name}")
+    typer.echo("")
     results: list[IterationResult] = []
     session_start = time.monotonic()
     iteration = 0
