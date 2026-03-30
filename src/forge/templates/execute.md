@@ -6,9 +6,9 @@ You are executing a single task from {task_source}.
 3. Implement everything described in the issue spec.
 4. Verify your work compiles and passes any validation described in the issue.
 5. Commit all changes in a single commit with message: <concise description of what was built>{commit_suffix}
-{bookkeeping}
+
 IMPORTANT:
-- Do ONLY this one issue. Stop after committing{bookkeeping_stop}.
+- Do ONLY this one issue. Stop after committing.
 - Do NOT modify files outside the scope of this issue unless fixing an import path that changed.
 - Scope lint to specific files — do not run project-wide lint that auto-fixes unrelated files.
 

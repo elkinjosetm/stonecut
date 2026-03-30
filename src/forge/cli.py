@@ -21,10 +21,8 @@ from forge.github import GitHubSource
 from forge.local import LocalSource
 from forge.naming import slugify_branch_component
 from forge.prompt import (
-    render_github_afk,
-    render_github_once,
-    render_local_afk,
-    render_local_once,
+    render_github,
+    render_local,
 )
 from forge.runner import IterationResult, run_afk_loop, run_interactive
 
@@ -164,12 +162,11 @@ def _run_local(name: str, mode: Mode, iterations_raw: str | None) -> None:
         typer.echo(f"Remaining: {remaining}/{total}")
         typer.echo("")
 
-        prompt = render_local_once(
+        prompt = render_local(
             prd_content=source.get_prd_content(),
             issue_number=issue.number,
             issue_filename=issue.filename,
             issue_content=issue.content,
-            spec_dir=str(source.spec_dir),
         )
         run_interactive(prompt)
 
@@ -178,7 +175,7 @@ def _run_local(name: str, mode: Mode, iterations_raw: str | None) -> None:
         results = run_afk_loop(
             source=source,
             iterations=parsed_iterations,
-            render_prompt=lambda issue: render_local_afk(
+            render_prompt=lambda issue: render_local(
                 prd_content=prd_content,
                 issue_number=issue.number,
                 issue_filename=issue.filename,
@@ -218,7 +215,7 @@ def _run_github(number: int, mode: Mode, iterations_raw: str | None) -> None:
         typer.echo(f"Remaining: {remaining}/{total}")
         typer.echo("")
 
-        prompt = render_github_once(
+        prompt = render_github(
             prd_content=prd.body,
             issue_number=issue.number,
             issue_title=issue.title,
@@ -231,7 +228,7 @@ def _run_github(number: int, mode: Mode, iterations_raw: str | None) -> None:
         results = run_afk_loop(
             source=source,
             iterations=parsed_iterations,
-            render_prompt=lambda issue: render_github_afk(
+            render_prompt=lambda issue: render_github(
                 prd_content=prd_content,
                 issue_number=issue.number,
                 issue_title=issue.title,
