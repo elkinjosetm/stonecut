@@ -20,9 +20,7 @@ class _FakeRunner:
 
     def run(self, prompt: str) -> RunResult:
         self.calls.append(prompt)
-        return RunResult(
-            success=self._success, exit_code=0, duration_seconds=0.1
-        )
+        return RunResult(success=self._success, exit_code=0, duration_seconds=0.1)
 
 
 class TestVerifyAndFix:
@@ -95,9 +93,7 @@ class _FakeSource:
         return None
 
     def get_remaining_count(self):
-        remaining = sum(
-            1 for i in self._issues if i.number not in self.completed
-        )
+        remaining = sum(1 for i in self._issues if i.number not in self.completed)
         return remaining, len(self._issues)
 
     def complete_issue(self, issue):
@@ -129,13 +125,9 @@ def _patch_git(monkeypatch, *, has_changes=True, commit_ok=True):
 
 
 class TestRunAfkLoopCommitFlow:
-    def test_runner_failure_does_not_complete(
-        self, monkeypatch
-    ) -> None:
+    def test_runner_failure_does_not_complete(self, monkeypatch) -> None:
         """Runner fails -> issue NOT completed."""
-        source = _FakeSource(
-            [_FakeIssue(number=1, title="Task 1")]
-        )
+        source = _FakeSource([_FakeIssue(number=1, title="Task 1")])
         fail_result = RunResult(
             success=False,
             exit_code=1,
@@ -162,9 +154,7 @@ class TestRunAfkLoopCommitFlow:
 
     def test_no_changes_marks_failure(self, monkeypatch) -> None:
         """Runner succeeds but no changes -> failure."""
-        source = _FakeSource(
-            [_FakeIssue(number=1, title="Task 1")]
-        )
+        source = _FakeSource([_FakeIssue(number=1, title="Task 1")])
         runner = _FakeRunner(success=True)
 
         no_changes_called: list[int] = []
@@ -190,13 +180,9 @@ class TestRunAfkLoopCommitFlow:
         assert source.completed == []
         assert no_changes_called == [1]
 
-    def test_successful_commit_completes_issue(
-        self, monkeypatch
-    ) -> None:
+    def test_successful_commit_completes_issue(self, monkeypatch) -> None:
         """Runner succeeds + commit succeeds -> completed."""
-        source = _FakeSource(
-            [_FakeIssue(number=1, title="Task 1")]
-        )
+        source = _FakeSource([_FakeIssue(number=1, title="Task 1")])
         runner = _FakeRunner(success=True)
         _patch_git(monkeypatch)
 
@@ -213,14 +199,14 @@ class TestRunAfkLoopCommitFlow:
         assert results[0].success is True
         assert source.completed == [1]
 
-    def test_commit_failure_stops_session(
-        self, monkeypatch
-    ) -> None:
+    def test_commit_failure_stops_session(self, monkeypatch) -> None:
         """Commit fails after retries -> session stops."""
-        source = _FakeSource([
-            _FakeIssue(number=1, title="Task 1"),
-            _FakeIssue(number=2, title="Task 2"),
-        ])
+        source = _FakeSource(
+            [
+                _FakeIssue(number=1, title="Task 1"),
+                _FakeIssue(number=2, title="Task 2"),
+            ]
+        )
         runner = _FakeRunner(success=True)
         _patch_git(monkeypatch, commit_ok=False)
 
@@ -241,9 +227,7 @@ class TestRunAfkLoopCommitFlow:
 
     def test_commit_retry_succeeds(self, monkeypatch) -> None:
         """Commit fails first, runner fixes, second succeeds."""
-        source = _FakeSource(
-            [_FakeIssue(number=1, title="Task 1")]
-        )
+        source = _FakeSource([_FakeIssue(number=1, title="Task 1")])
         runner = _FakeRunner(success=True)
 
         commit_attempts: list[str] = []
@@ -259,15 +243,9 @@ class TestRunAfkLoopCommitFlow:
             "snapshot_working_tree",
             lambda: WorkingTreeSnapshot(),
         )
-        monkeypatch.setattr(
-            runner_mod, "stage_changes", lambda snapshot: True
-        )
-        monkeypatch.setattr(
-            runner_mod, "commit_changes", fake_commit
-        )
-        monkeypatch.setattr(
-            runner_mod, "revert_uncommitted", lambda snapshot: None
-        )
+        monkeypatch.setattr(runner_mod, "stage_changes", lambda snapshot: True)
+        monkeypatch.setattr(runner_mod, "commit_changes", fake_commit)
+        monkeypatch.setattr(runner_mod, "revert_uncommitted", lambda snapshot: None)
 
         results = run_afk_loop(
             source=source,
