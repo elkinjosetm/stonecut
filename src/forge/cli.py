@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from importlib.metadata import version
 from pathlib import Path
 from typing import cast
@@ -25,6 +26,22 @@ from forge.prompt import (
 )
 from forge.runner import IterationResult, run_afk_loop
 from forge.runners import get_runner
+
+
+def _comment_on_issue(issue_number: int, runner_output: str | None) -> None:
+    """Post a comment on a GitHub issue when the runner produced no changes."""
+    body = "**Forge:** Runner completed but produced no file changes.\n"
+    if runner_output:
+        body += (
+            "\n<details><summary>Runner output</summary>\n\n"
+            f"```\n{runner_output}\n```\n\n</details>"
+        )
+    subprocess.run(
+        ["gh", "issue", "comment", str(issue_number), "--body", body],
+        capture_output=True,
+        text=True,
+    )
+
 
 SKILL_NAMES = ["forge-interview", "forge-prd", "forge-issues"]
 
@@ -153,6 +170,7 @@ def _run_local(name: str, iterations_raw: str, runner_name: str) -> None:
             issue_content=issue.content,
         ),
         display_name=lambda issue: issue.filename,
+        commit_message=lambda issue: f"Issue {issue.number}: {issue.filename}",
         runner=runner_instance,
         runner_name=runner_name,
     )
@@ -189,8 +207,10 @@ def _run_github(number: int, iterations_raw: str, runner_name: str) -> None:
             issue_content=issue.body,
         ),
         display_name=lambda issue: issue.title,
+        commit_message=lambda issue: f"Issue #{issue.number}: {issue.title}",
         runner=runner_instance,
         runner_name=runner_name,
+        on_no_changes=lambda issue, output: _comment_on_issue(issue.number, output),
     )
     if results:
         _push_and_create_pr(

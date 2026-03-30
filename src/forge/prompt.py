@@ -25,7 +25,6 @@ def render_local(
         issue_number=issue_number,
         issue_filename=issue_filename,
         issue_content=issue_content,
-        commit_suffix="",
     )
 
 
@@ -44,5 +43,4 @@ def render_github(
         issue_number=issue_number,
         issue_filename=issue_title,
         issue_content=issue_content,
-        commit_suffix=f" (#{issue_number})",
     )

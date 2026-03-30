@@ -283,6 +283,7 @@ class TestSessionHeader:
             iterations="all",
             render_prompt=lambda _: "",
             display_name=lambda _: "",
+            commit_message=lambda _: "",
             runner=ClaudeRunner(),
             runner_name="codex",
         )
