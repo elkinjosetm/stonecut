@@ -23,7 +23,7 @@ from forge.prompt import (
     render_github,
     render_local,
 )
-from forge.runner import IterationResult, Runner, run_afk_loop
+from forge.runner import IterationResult, run_afk_loop
 from forge.runners import get_runner
 
 SKILL_NAMES = ["forge:interview", "forge:prd", "forge:issues"]
@@ -36,7 +36,7 @@ def _version_callback(value: bool) -> None:
 
 
 app = typer.Typer(
-    help="Forge — execute PRD-driven development workflows using Claude Code.",
+    help="Forge — execute PRD-driven development workflows using agentic coding CLIs.",
     add_completion=False,
 )
 

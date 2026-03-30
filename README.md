@@ -1,6 +1,6 @@
 # PRD Forge
 
-A CLI that drives PRD-driven development with Claude Code. You write the PRD, Forge executes the issues one by one.
+A CLI that drives PRD-driven development with agentic coding CLIs. You write the PRD, Forge executes the issues one by one.
 
 ## Workflow
 
@@ -9,7 +9,7 @@ Ideas can come from anywhere — Jira tickets, Slack threads, MCP servers, or ju
 1. **`/forge:interview`** — Stress-test the idea. Get grilled on the plan until it's solid.
 2. **`/forge:prd`** — Turn the validated idea into a PRD (local file or GitHub issue).
 3. **`/forge:issues`** — Break the PRD into independently-grabbable issues (local markdown files or GitHub sub-issues).
-4. **`forge run`** — Execute the issues sequentially with Claude Code.
+4. **`forge run`** — Execute the issues sequentially with an agentic coding CLI.
 
 Steps 1–3 are Claude Code skills installed via `forge setup-skills`. Step 4 is the Forge CLI.
 
@@ -51,40 +51,34 @@ This installs `ruff` and `pytest`, and activates a pre-commit hook that runs lin
 
 ## Usage
 
-Forge has one execution command (`run`) with two sources (`--local` for local PRDs, `--github` for GitHub PRDs) and two execution modes (`once` for interactive, `afk` for autonomous).
+Forge has one execution command (`run`) with two sources (`--local` for local PRDs, `--github` for GitHub PRDs). All execution is headless — Forge runs the issues autonomously and creates a PR when done.
 
 ### `forge run --local` — Local PRDs
 
 ```sh
-# Interactive — pick the next issue, work on it with Claude in real time
-forge run --local my-feature -m once
-
-# Autonomous — run 5 issues headless, then push and create a PR
-forge run --local my-feature -m afk -i 5
+# Run 5 issues, then push and create a PR
+forge run --local my-feature -i 5
 
 # Run all remaining issues
-forge run --local my-feature -m afk -i all
+forge run --local my-feature -i all
 ```
 
 ### `forge run --github` — GitHub PRDs
 
 ```sh
-# Interactive — pick the next open sub-issue
-forge run --github 42 -m once
-
-# Autonomous — run 5 issues headless, then push and create a PR
-forge run --github 42 -m afk -i 5
+# Run 5 sub-issues
+forge run --github 42 -i 5
 
 # Run all remaining sub-issues
-forge run --github 42 -m afk -i all
+forge run --github 42 -i all
 ```
 
 ### Flags
 
 | Flag | Short | Required | Description |
 |------|-------|----------|-------------|
-| `--mode` | `-m` | Always | `once` (interactive) or `afk` (autonomous) |
-| `--iterations` | `-i` | In `afk` mode | Positive integer or `all`. Silently ignored in `once` mode. |
+| `--iterations` | `-i` | Always | Positive integer or `all`. |
+| `--runner` | — | No | Agentic CLI runner to use. Default: `claude`. |
 | `--version` | `-V` | — | Show version and exit. |
 
 ### Pre-execution prompts
@@ -92,16 +86,16 @@ forge run --github 42 -m afk -i all
 Before starting, Forge:
 
 1. Checks for a clean working tree
-2. Prompts for a branch name (suggests `forge/<slug>` across both modes: local uses the spec name, GitHub uses the PRD title slug, with `forge/issue-<number>` fallback)
+2. Prompts for a branch name (suggests `forge/<slug>` — local uses the spec name, GitHub uses the PRD title slug, with `forge/issue-<number>` fallback)
 3. Prompts for a base branch / PR target (suggests `main`)
 4. Creates or checks out the branch
 
-### After an `afk` run
+### After a run
 
-Forge automatically pushes the branch, creates a PR, and includes a Forge Report listing each issue with its status (completed or failed). Timing stats are printed per iteration and for the full session.
+Forge automatically pushes the branch, creates a PR, and includes a Forge Report listing each issue with its status (completed or failed with error reason). The report also shows which runner was used. Timing stats are printed per iteration and for the full session.
 In GitHub mode, the PR title defaults to the PRD issue title with a `PRD #<number>` fallback if the title is unavailable.
 
-## Modes
+## Sources
 
 ### Local mode (`forge run --local <name>`)
 
@@ -153,15 +147,5 @@ forge remove-skills --target ~/.claude-acme
 ## Prerequisites
 
 - Python 3.10+
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) — `claude` must be in your PATH
+- An agentic coding CLI — [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`) is the default runner and must be in your PATH
 - [GitHub CLI](https://cli.github.com/) — `gh`, authenticated. Only needed for GitHub mode.
-
-## Legacy scripts (deprecated)
-
-The original shell scripts (`ralph-once`, `ralph-afk`, `ralph-lib`) remain in the repo for reference. They are functionally replaced by Forge and will be removed in a future release.
-
-```sh
-# These still work but are deprecated — use forge instead
-ralph-once --spec ./specs/my-feature
-ralph-afk --prd 42 --iterations all
-```

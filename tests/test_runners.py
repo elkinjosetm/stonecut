@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-from forge.runner import RunResult, Runner
+from forge.runner import Runner, RunResult
 from forge.runners import get_runner
 from forge.runners.claude import ClaudeRunner
 
