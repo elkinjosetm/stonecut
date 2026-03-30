@@ -23,7 +23,8 @@ from forge.prompt import (
     render_github,
     render_local,
 )
-from forge.runner import IterationResult, run_afk_loop
+from forge.runner import IterationResult, Runner, run_afk_loop
+from forge.runners import get_runner
 
 SKILL_NAMES = ["forge:interview", "forge:prd", "forge:issues"]
 
@@ -90,13 +91,21 @@ def _pre_execution(suggested_branch: str) -> tuple[str, str]:
 
 
 def _build_forge_report(
-    results: list[IterationResult], *, prd_number: int | None = None
+    results: list[IterationResult],
+    *,
+    runner_name: str,
+    prd_number: int | None = None,
 ) -> str:
     """Build the Forge Report section for a PR body."""
-    lines = ["## Forge Report"]
+    lines = ["## Forge Report", f"**Runner:** {runner_name}", ""]
     for r in results:
-        status = "completed" if r.success else "failed (non-zero exit code)"
-        lines.append(f"- #{r.issue_number} {r.issue_filename}: {status}")
+        if r.success:
+            lines.append(f"- #{r.issue_number} {r.issue_filename}: completed")
+        else:
+            reason = r.error or "unknown error"
+            lines.append(
+                f"- #{r.issue_number} {r.issue_filename}: failed — {reason}"
+            )
 
     if prd_number is not None:
         lines.append("")
@@ -111,17 +120,21 @@ def _push_and_create_pr(
     base_branch: str,
     pr_title: str,
     *,
+    runner_name: str,
     prd_number: int | None = None,
 ) -> None:
     """Push the branch and create a PR with a Forge Report after an afk run."""
-    report = _build_forge_report(results, prd_number=prd_number)
+    report = _build_forge_report(
+        results, runner_name=runner_name, prd_number=prd_number
+    )
     push_branch(branch)
     create_pr(title=pr_title, body=report, base_branch=base_branch)
 
 
-def _run_local(name: str, iterations_raw: str) -> None:
+def _run_local(name: str, iterations_raw: str, runner_name: str) -> None:
     """Execute issues from a local PRD at .forge/<name>/."""
     parsed_iterations = _parse_iterations(iterations_raw)
+    runner_instance = get_runner(runner_name)
 
     source = LocalSource(name)
     local_slug = slugify_branch_component(name)
@@ -139,6 +152,7 @@ def _run_local(name: str, iterations_raw: str) -> None:
             issue_content=issue.content,
         ),
         display_name=lambda issue: issue.filename,
+        runner=runner_instance,
     )
     if results:
         _push_and_create_pr(
@@ -146,12 +160,14 @@ def _run_local(name: str, iterations_raw: str) -> None:
             branch=branch,
             base_branch=base_branch,
             pr_title=f"Forge: {name}",
+            runner_name=runner_name,
         )
 
 
-def _run_github(number: int, iterations_raw: str) -> None:
+def _run_github(number: int, iterations_raw: str, runner_name: str) -> None:
     """Execute issues from a GitHub PRD."""
     parsed_iterations = _parse_iterations(iterations_raw)
+    runner_instance = get_runner(runner_name)
 
     source = GitHubSource(number)
     prd = source.get_prd()
@@ -171,6 +187,7 @@ def _run_github(number: int, iterations_raw: str) -> None:
             issue_content=issue.body,
         ),
         display_name=lambda issue: issue.title,
+        runner=runner_instance,
     )
     if results:
         _push_and_create_pr(
@@ -178,6 +195,7 @@ def _run_github(number: int, iterations_raw: str) -> None:
             branch=branch,
             base_branch=base_branch,
             pr_title=pr_title,
+            runner_name=runner_name,
             prd_number=number,
         )
 
@@ -213,13 +231,18 @@ def run(
         "-i",
         help="Number of issues to process, or 'all'.",
     ),
+    runner_name: str = typer.Option(
+        "claude",
+        "--runner",
+        help="Agentic CLI runner to use.",
+    ),
 ) -> None:
     """Execute issues from a local PRD or GitHub PRD."""
     source_kind, source_value = _validate_run_source(local, github)
     if source_kind == "local":
-        _run_local(cast(str, source_value), iterations)
+        _run_local(cast(str, source_value), iterations, runner_name)
         return
-    _run_github(cast(int, source_value), iterations)
+    _run_github(cast(int, source_value), iterations, runner_name)
 
 
 def _get_skills_source_dir() -> Path:

@@ -1,8 +1,7 @@
-"""Runner — spawns Claude Code sessions."""
+"""Runner — orchestration loop and runner abstractions."""
 
 from __future__ import annotations
 
-import subprocess
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -37,18 +36,7 @@ class IterationResult:
     issue_filename: str
     success: bool
     elapsed_seconds: float
-
-
-
-def run_headless(prompt: str) -> int:
-    """Spawn a headless Claude Code session and return the exit code."""
-    result = subprocess.run(
-        ["claude", "-p", "--allowedTools", "Bash,Edit,Read,Write,Glob,Grep"],
-        input=prompt,
-        text=True,
-        capture_output=True,
-    )
-    return result.returncode
+    error: str | None = None
 
 
 def run_afk_loop(
@@ -56,11 +44,12 @@ def run_afk_loop(
     iterations: int | str,
     render_prompt: Callable[[Any], str],
     display_name: Callable[[Any], str],
+    runner: Runner,
 ) -> list[IterationResult]:
-    """Run the autonomous afk loop over issues from any source.
+    """Run the autonomous loop over issues from any source.
 
-    Spawns headless Claude Code sessions, handles bookkeeping on success,
-    and tracks results per issue. Works with both LocalSource and GitHubSource.
+    Uses the provided Runner instance to execute each issue's prompt.
+    Works with both LocalSource and GitHubSource.
     """
     results: list[IterationResult] = []
     session_start = time.monotonic()
@@ -86,33 +75,35 @@ def run_afk_loop(
         typer.echo("")
 
         prompt = render_prompt(issue)
+        run_result = runner.run(prompt)
 
-        iter_start = time.monotonic()
-        exit_code = run_headless(prompt)
-        elapsed = time.monotonic() - iter_start
-
-        if exit_code == 0:
+        if run_result.success:
             source.complete_issue(issue)
-            typer.echo(f"Issue {issue.number}: completed ({_fmt_time(elapsed)})")
+            typer.echo(
+                f"Issue {issue.number}: completed "
+                f"({_fmt_time(run_result.duration_seconds)})"
+            )
             results.append(
                 IterationResult(
                     issue_number=issue.number,
                     issue_filename=name,
                     success=True,
-                    elapsed_seconds=elapsed,
+                    elapsed_seconds=run_result.duration_seconds,
                 )
             )
         else:
+            error_detail = run_result.error or "unknown error"
             typer.echo(
-                f"Issue {issue.number}: failed "
-                f"(exit code {exit_code}, {_fmt_time(elapsed)})"
+                f"Issue {issue.number}: failed — {error_detail} "
+                f"({_fmt_time(run_result.duration_seconds)})"
             )
             results.append(
                 IterationResult(
                     issue_number=issue.number,
                     issue_filename=name,
                     success=False,
-                    elapsed_seconds=elapsed,
+                    elapsed_seconds=run_result.duration_seconds,
+                    error=run_result.error,
                 )
             )
 
