@@ -2,7 +2,7 @@
 
 ## Skills
 
-The skills in `src/forge/skills/` (`forge:interview`, `forge:prd`, `forge:issues`) are
+The skills in `src/forge/skills/` (`forge-interview`, `forge-prd`, `forge-issues`) are
 derived from works by **Matt Pocock**, originally published under the MIT License at:
 
 - [grill-me](https://github.com/mattpocock/skills/tree/main/grill-me)

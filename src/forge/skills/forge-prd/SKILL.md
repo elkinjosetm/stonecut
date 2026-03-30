@@ -1,5 +1,5 @@
 ---
-name: forge:prd
+name: forge-prd
 description: Write a PRD through structured user interview, codebase exploration, and module design. Saves the result as a local file or GitHub issue. Use when the user wants to create a product requirements document or plan a new feature.
 ---
 
@@ -124,4 +124,4 @@ Any further notes about the feature.
 
 ## Next Step
 
-Once the PRD is saved, ask the user: "Ready to break this into issues? I can run `/forge:issues` next."
+Once the PRD is saved, ask the user: "Ready to break this into issues? I can run `/forge-issues` next."

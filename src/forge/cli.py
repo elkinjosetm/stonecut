@@ -26,7 +26,7 @@ from forge.prompt import (
 from forge.runner import IterationResult, run_afk_loop
 from forge.runners import get_runner
 
-SKILL_NAMES = ["forge:interview", "forge:prd", "forge:issues"]
+SKILL_NAMES = ["forge-interview", "forge-prd", "forge-issues"]
 
 
 def _version_callback(value: bool) -> None:

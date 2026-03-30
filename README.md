@@ -6,9 +6,9 @@ A CLI that drives PRD-driven development with agentic coding CLIs. You write the
 
 Ideas can come from anywhere — Jira tickets, Slack threads, MCP servers, or just a conversation. The pipeline starts once you're ready to act on one:
 
-1. **`/forge:interview`** — Stress-test the idea. Get grilled on the plan until it's solid.
-2. **`/forge:prd`** — Turn the validated idea into a PRD (local file or GitHub issue).
-3. **`/forge:issues`** — Break the PRD into independently-grabbable issues (local markdown files or GitHub sub-issues).
+1. **`/forge-interview`** — Stress-test the idea. Get grilled on the plan until it's solid.
+2. **`/forge-prd`** — Turn the validated idea into a PRD (local file or GitHub issue).
+3. **`/forge-issues`** — Break the PRD into independently-grabbable issues (local markdown files or GitHub sub-issues).
 4. **`forge run`** — Execute the issues sequentially with an agentic coding CLI.
 
 Steps 1–3 are Claude Code skills installed via `forge setup-skills`. Step 4 is the Forge CLI.
@@ -129,7 +129,7 @@ The repo ships three Claude Code skills for steps 1–3 of the workflow. Install
 forge setup-skills
 ```
 
-This creates symlinks in `~/.claude/skills/` pointing to the installed package. Once linked, they're available as `/forge:interview`, `/forge:prd`, and `/forge:issues` in any Claude Code session.
+This creates symlinks in `~/.claude/skills/` pointing to the installed package. Once linked, they're available as `/forge-interview`, `/forge-prd`, and `/forge-issues` in any Claude Code session.
 
 For non-default Claude Code installations, pass `--target` with the Claude root path:
 
