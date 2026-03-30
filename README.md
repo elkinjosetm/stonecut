@@ -78,7 +78,7 @@ forge run --github 42 -i all
 | Flag | Short | Required | Description |
 |------|-------|----------|-------------|
 | `--iterations` | `-i` | Always | Positive integer or `all`. |
-| `--runner` | — | No | Agentic CLI runner to use. Default: `claude`. |
+| `--runner` | — | No | Agentic CLI runner to use (`claude`, `codex`). Default: `claude`. |
 | `--version` | `-V` | — | Show version and exit. |
 
 ### Pre-execution prompts
@@ -147,5 +147,5 @@ forge remove-skills --target ~/.claude-acme
 ## Prerequisites
 
 - Python 3.10+
-- An agentic coding CLI — [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`) is the default runner and must be in your PATH
+- An agentic coding CLI — [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`) is the default runner and must be in your PATH. [OpenAI Codex CLI](https://github.com/openai/codex) (`codex`) is required only when using `--runner codex`.
 - [GitHub CLI](https://cli.github.com/) — `gh`, authenticated. Required for GitHub mode and for pushing branches / creating PRs in local mode.
