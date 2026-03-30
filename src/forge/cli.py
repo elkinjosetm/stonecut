@@ -26,7 +26,10 @@ from forge.prompt import (
 from forge.runner import IterationResult, run_afk_loop
 from forge.runners import get_runner
 
-SKILL_NAMES = ["forge:interview", "forge:prd", "forge:issues"]
+SKILL_NAMES = ["forge-interview", "forge-prd", "forge-issues"]
+
+# Old skill names that used ':' as separator — used for migration only.
+_LEGACY_SKILL_NAMES = ["forge:interview", "forge:prd", "forge:issues"]
 
 
 def _version_callback(value: bool) -> None:
@@ -286,6 +289,13 @@ def setup_skills(
 
     target_dir = _get_skills_target_dir(claude_root=target)
 
+    # Migrate legacy forge:* symlinks created before the colon→dash rename.
+    for legacy_name in _LEGACY_SKILL_NAMES:
+        legacy = target_dir / legacy_name
+        if legacy.is_symlink():
+            legacy.unlink()
+            typer.echo(f"Migrated: removed legacy skill link '{legacy_name}'")
+
     for name in SKILL_NAMES:
         source = source_dir / name
         target = target_dir / name
@@ -348,3 +358,10 @@ def remove_skills(
 
         target.unlink()
         typer.echo(f"Removed {name}")
+
+    # Also clean up any legacy forge:* symlinks that may still exist.
+    for legacy_name in _LEGACY_SKILL_NAMES:
+        legacy = target_dir / legacy_name
+        if legacy.is_symlink():
+            legacy.unlink()
+            typer.echo(f"Removed legacy skill link '{legacy_name}'")
