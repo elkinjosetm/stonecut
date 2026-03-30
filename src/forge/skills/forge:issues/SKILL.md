@@ -158,27 +158,6 @@ Reference by number from the parent PRD:
 
 Do NOT close or modify the parent PRD issue (if it's a GitHub issue).
 
-### 7. Configure execution (local files only)
-
-> **Note:** GitHub mode does not need a config.json. Forge uses the unified `forge/<slug>` branch convention: GitHub derives the slug from the PRD title and falls back to `forge/issue-<number>` when needed. Commit format is inferred automatically as `<description> (#<issue-number>)`.
-
-After creating local issue files, configure how the forge scripts will execute this spec. Write a `config.json` to the spec directory:
-
-```json
-{
-  "branch": "<branch-name-or-null>",
-  "commitPrefix": "<prefix-or-null>"
-}
-```
-
-**Branch** — Ask the user: "What branch should this work happen on?" If they provide a name, set `branch` to that value and create the branch (from the current HEAD) if it doesn't already exist. If they want to stay on the current branch, set to `null`.
-
-**Commit prefix** — Determine from the issue structure:
-- If all issues share the same commit prefix (single-ticket spec), set `commitPrefix` to that value (e.g., `"SCP-1099"`). The forge scripts will use `<commitPrefix> :: <description>` for commit messages.
-- If each issue defines its own commit message (multi-ticket spec where issues reference different ticket IDs), set `commitPrefix` to `null`. The forge scripts will omit the commit step and let each issue's acceptance criteria define the commit message.
-
-When in doubt, ask the user which approach they prefer.
-
 ## Workflow Complete
 
 Once all issues are created, present the user with their options:
