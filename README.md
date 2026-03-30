@@ -148,4 +148,4 @@ forge remove-skills --target ~/.claude-acme
 
 - Python 3.10+
 - An agentic coding CLI — [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`) is the default runner and must be in your PATH
-- [GitHub CLI](https://cli.github.com/) — `gh`, authenticated. Only needed for GitHub mode.
+- [GitHub CLI](https://cli.github.com/) — `gh`, authenticated. Required for GitHub mode and for pushing branches / creating PRs in local mode.

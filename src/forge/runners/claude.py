@@ -24,19 +24,27 @@ class ClaudeRunner:
 
     def run(self, prompt: str) -> RunResult:
         start = time.monotonic()
-        result = subprocess.run(
-            [
-                "claude",
-                "-p",
-                "--output-format",
-                "json",
-                "--allowedTools",
-                "Bash,Edit,Read,Write,Glob,Grep",
-            ],
-            input=prompt,
-            text=True,
-            capture_output=True,
-        )
+        try:
+            result = subprocess.run(
+                [
+                    "claude",
+                    "-p",
+                    "--output-format",
+                    "json",
+                    "--allowedTools",
+                    "Bash,Edit,Read,Write,Glob,Grep",
+                ],
+                input=prompt,
+                text=True,
+                capture_output=True,
+            )
+        except FileNotFoundError:
+            return RunResult(
+                success=False,
+                exit_code=1,
+                duration_seconds=time.monotonic() - start,
+                error="claude binary not found in PATH",
+            )
         duration = time.monotonic() - start
 
         output = result.stdout or None
@@ -59,6 +67,15 @@ class ClaudeRunner:
                 duration_seconds=duration,
                 output=output,
                 error="malformed JSON output",
+            )
+
+        if not isinstance(data, dict):
+            return RunResult(
+                success=False,
+                exit_code=result.returncode,
+                duration_seconds=duration,
+                output=output,
+                error="unexpected JSON output (not an object)",
             )
 
         subtype = data.get("subtype", "")

@@ -100,6 +100,25 @@ class TestClaudeRunner:
         assert result.success is False
         assert "error_something_else" in result.error
 
+    def test_binary_not_found(self, monkeypatch) -> None:
+        def raise_fnf(*a, **kw):
+            raise FileNotFoundError("claude")
+
+        monkeypatch.setattr(subprocess, "run", raise_fnf)
+        result = ClaudeRunner().run("test prompt")
+        assert result.success is False
+        assert "not found" in result.error
+
+    def test_non_object_json(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda *a, **kw: _make_completed_process(stdout="[1,2,3]"),
+        )
+        result = ClaudeRunner().run("test prompt")
+        assert result.success is False
+        assert "not an object" in result.error
+
     def test_malformed_json(self, monkeypatch) -> None:
         monkeypatch.setattr(
             subprocess,
