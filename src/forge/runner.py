@@ -6,10 +6,28 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Protocol, runtime_checkable
 
 import typer
+
+
+@dataclass
+class RunResult:
+    """Structured result from a single runner execution."""
+
+    success: bool
+    exit_code: int
+    duration_seconds: float
+    output: str | None = None
+    error: str | None = None
+
+
+@runtime_checkable
+class Runner(Protocol):
+    """Protocol that all runner adapters must satisfy."""
+
+    def run(self, prompt: str) -> RunResult: ...
 
 
 @dataclass
