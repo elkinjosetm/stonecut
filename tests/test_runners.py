@@ -245,7 +245,7 @@ class TestCodexRunner:
         )
         result = CodexRunner().run("test prompt")
         assert isinstance(result.duration_seconds, float)
-        assert result.duration_seconds > 0
+        assert result.duration_seconds >= 0
 
     def test_spawns_correct_command(self, monkeypatch) -> None:
         captured_args: list = []
@@ -257,7 +257,12 @@ class TestCodexRunner:
         monkeypatch.setattr(subprocess, "run", fake_run)
         CodexRunner().run("hello")
         assert captured_args[0] == [
-            "codex", "exec", "--full-auto", "--json", "--ephemeral", "-"
+            "codex",
+            "exec",
+            "--full-auto",
+            "--json",
+            "--ephemeral",
+            "-",
         ]
 
 

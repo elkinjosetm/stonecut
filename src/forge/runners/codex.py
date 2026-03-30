@@ -66,10 +66,12 @@ def _extract_error(stdout: str) -> str:
         event_type = event.get("type")
         if event_type == "turn.failed":
             nested = event.get("error")
-            if isinstance(nested, dict) and "message" in nested:
-                return nested["message"]
+            if isinstance(nested, dict):
+                msg = nested.get("message")
+                if isinstance(msg, str) and msg:
+                    return msg
         elif event_type == "error":
             msg = event.get("message")
-            if msg:
+            if isinstance(msg, str) and msg:
                 return msg
     return "codex exited with non-zero status"
