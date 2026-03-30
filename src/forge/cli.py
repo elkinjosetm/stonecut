@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from enum import Enum
 from importlib.metadata import version
 from pathlib import Path
 from typing import cast
@@ -21,12 +20,11 @@ from forge.github import GitHubSource
 from forge.local import LocalSource
 from forge.naming import slugify_branch_component
 from forge.prompt import (
-    render_github_afk,
-    render_github_once,
-    render_local_afk,
-    render_local_once,
+    render_github,
+    render_local,
 )
-from forge.runner import IterationResult, run_afk_loop, run_interactive
+from forge.runner import IterationResult, run_afk_loop
+from forge.runners import get_runner
 
 SKILL_NAMES = ["forge:interview", "forge:prd", "forge:issues"]
 
@@ -38,7 +36,7 @@ def _version_callback(value: bool) -> None:
 
 
 app = typer.Typer(
-    help="Forge — execute PRD-driven development workflows using Claude Code.",
+    help="Forge — execute PRD-driven development workflows using agentic coding CLIs.",
     add_completion=False,
 )
 
@@ -57,15 +55,8 @@ def main(
     """Forge — execute PRD-driven development workflows using Claude Code."""
 
 
-class Mode(str, Enum):
-    once = "once"
-    afk = "afk"
-
-
-def _parse_iterations(value: str | None) -> int | str | None:
+def _parse_iterations(value: str) -> int | str:
     """Parse --iterations value: positive integer or 'all'."""
-    if value is None:
-        return None
     if value == "all":
         return "all"
     try:
@@ -100,13 +91,19 @@ def _pre_execution(suggested_branch: str) -> tuple[str, str]:
 
 
 def _build_forge_report(
-    results: list[IterationResult], *, prd_number: int | None = None
+    results: list[IterationResult],
+    *,
+    runner_name: str,
+    prd_number: int | None = None,
 ) -> str:
     """Build the Forge Report section for a PR body."""
-    lines = ["## Forge Report"]
+    lines = ["## Forge Report", f"**Runner:** {runner_name}", ""]
     for r in results:
-        status = "completed" if r.success else "failed (non-zero exit code)"
-        lines.append(f"- #{r.issue_number} {r.issue_filename}: {status}")
+        if r.success:
+            lines.append(f"- #{r.issue_number} {r.issue_filename}: completed")
+        else:
+            reason = r.error or "unknown error"
+            lines.append(f"- #{r.issue_number} {r.issue_filename}: failed — {reason}")
 
     if prd_number is not None:
         lines.append("")
@@ -121,83 +118,54 @@ def _push_and_create_pr(
     base_branch: str,
     pr_title: str,
     *,
+    runner_name: str,
     prd_number: int | None = None,
 ) -> None:
     """Push the branch and create a PR with a Forge Report after an afk run."""
-    report = _build_forge_report(results, prd_number=prd_number)
+    report = _build_forge_report(
+        results, runner_name=runner_name, prd_number=prd_number
+    )
     push_branch(branch)
     create_pr(title=pr_title, body=report, base_branch=base_branch)
 
 
-def _validate_iterations(mode: Mode, iterations_raw: str | None) -> int | str | None:
-    """Validate and parse iterations flag for the given mode."""
-    iterations = _parse_iterations(iterations_raw)
-
-    if mode == Mode.afk and iterations is None:
-        raise typer.BadParameter("--iterations / -i is required when mode is 'afk'.")
-
-    # In once mode, silently ignore iterations
-    if mode == Mode.once:
-        iterations = None
-
-    return iterations
-
-
-def _run_local(name: str, mode: Mode, iterations_raw: str | None) -> None:
+def _run_local(name: str, iterations_raw: str, runner_name: str) -> None:
     """Execute issues from a local PRD at .forge/<name>/."""
-    parsed_iterations = _validate_iterations(mode, iterations_raw)
+    parsed_iterations = _parse_iterations(iterations_raw)
+    runner_instance = get_runner(runner_name)
 
     source = LocalSource(name)
     local_slug = slugify_branch_component(name)
     suggested_branch = f"forge/{local_slug}" if local_slug else "forge/spec"
     branch, base_branch = _pre_execution(suggested_branch)
 
-    if mode == Mode.once:
-        issue = source.get_next_issue()
-
-        if issue is None:
-            typer.echo("All issues complete!")
-            raise typer.Exit()
-
-        remaining, total = source.get_remaining_count()
-        typer.echo(f"Issue {issue.number}: {issue.filename}")
-        typer.echo(f"Remaining: {remaining}/{total}")
-        typer.echo("")
-
-        prompt = render_local_once(
-            prd_content=source.get_prd_content(),
+    prd_content = source.get_prd_content()
+    results = run_afk_loop(
+        source=source,
+        iterations=parsed_iterations,
+        render_prompt=lambda issue: render_local(
+            prd_content=prd_content,
             issue_number=issue.number,
             issue_filename=issue.filename,
             issue_content=issue.content,
-            spec_dir=str(source.spec_dir),
+        ),
+        display_name=lambda issue: issue.filename,
+        runner=runner_instance,
+    )
+    if results:
+        _push_and_create_pr(
+            results=results,
+            branch=branch,
+            base_branch=base_branch,
+            pr_title=f"Forge: {name}",
+            runner_name=runner_name,
         )
-        run_interactive(prompt)
-
-    elif mode == Mode.afk:
-        prd_content = source.get_prd_content()
-        results = run_afk_loop(
-            source=source,
-            iterations=parsed_iterations,
-            render_prompt=lambda issue: render_local_afk(
-                prd_content=prd_content,
-                issue_number=issue.number,
-                issue_filename=issue.filename,
-                issue_content=issue.content,
-            ),
-            display_name=lambda issue: issue.filename,
-        )
-        if results:
-            _push_and_create_pr(
-                results=results,
-                branch=branch,
-                base_branch=base_branch,
-                pr_title=f"Forge: {name}",
-            )
 
 
-def _run_github(number: int, mode: Mode, iterations_raw: str | None) -> None:
+def _run_github(number: int, iterations_raw: str, runner_name: str) -> None:
     """Execute issues from a GitHub PRD."""
-    parsed_iterations = _validate_iterations(mode, iterations_raw)
+    parsed_iterations = _parse_iterations(iterations_raw)
+    runner_instance = get_runner(runner_name)
 
     source = GitHubSource(number)
     prd = source.get_prd()
@@ -206,47 +174,28 @@ def _run_github(number: int, mode: Mode, iterations_raw: str | None) -> None:
     pr_title = prd.title or f"PRD #{number}"
     branch, base_branch = _pre_execution(suggested_branch)
 
-    if mode == Mode.once:
-        issue = source.get_next_issue()
-
-        if issue is None:
-            typer.echo("All issues complete!")
-            raise typer.Exit()
-
-        remaining, total = source.get_remaining_count()
-        typer.echo(f"Issue #{issue.number}: {issue.title}")
-        typer.echo(f"Remaining: {remaining}/{total}")
-        typer.echo("")
-
-        prompt = render_github_once(
-            prd_content=prd.body,
+    prd_content = prd.body
+    results = run_afk_loop(
+        source=source,
+        iterations=parsed_iterations,
+        render_prompt=lambda issue: render_github(
+            prd_content=prd_content,
             issue_number=issue.number,
             issue_title=issue.title,
             issue_content=issue.body,
+        ),
+        display_name=lambda issue: issue.title,
+        runner=runner_instance,
+    )
+    if results:
+        _push_and_create_pr(
+            results=results,
+            branch=branch,
+            base_branch=base_branch,
+            pr_title=pr_title,
+            runner_name=runner_name,
+            prd_number=number,
         )
-        run_interactive(prompt)
-
-    elif mode == Mode.afk:
-        prd_content = prd.body
-        results = run_afk_loop(
-            source=source,
-            iterations=parsed_iterations,
-            render_prompt=lambda issue: render_github_afk(
-                prd_content=prd_content,
-                issue_number=issue.number,
-                issue_title=issue.title,
-                issue_content=issue.body,
-            ),
-            display_name=lambda issue: issue.title,
-        )
-        if results:
-            _push_and_create_pr(
-                results=results,
-                branch=branch,
-                base_branch=base_branch,
-                pr_title=pr_title,
-                prd_number=number,
-            )
 
 
 def _validate_run_source(
@@ -274,25 +223,24 @@ def run(
         "--github",
         help="GitHub PRD issue number.",
     ),
-    mode: Mode = typer.Option(
+    iterations: str = typer.Option(
         ...,
-        "--mode",
-        "-m",
-        help="Execution mode: 'once' (interactive) or 'afk' (autonomous).",
-    ),
-    iterations: str | None = typer.Option(
-        None,
         "--iterations",
         "-i",
-        help="Number of issues to process, or 'all'. Required for afk mode.",
+        help="Number of issues to process, or 'all'.",
+    ),
+    runner_name: str = typer.Option(
+        "claude",
+        "--runner",
+        help="Agentic CLI runner to use.",
     ),
 ) -> None:
     """Execute issues from a local PRD or GitHub PRD."""
     source_kind, source_value = _validate_run_source(local, github)
     if source_kind == "local":
-        _run_local(cast(str, source_value), mode, iterations)
+        _run_local(cast(str, source_value), iterations, runner_name)
         return
-    _run_github(cast(int, source_value), mode, iterations)
+    _run_github(cast(int, source_value), iterations, runner_name)
 
 
 def _get_skills_source_dir() -> Path:

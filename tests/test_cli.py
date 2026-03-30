@@ -30,50 +30,78 @@ class TestRunCommand:
     def test_routes_local_source(self, monkeypatch) -> None:
         called: dict[str, object] = {}
 
-        def fake_run_local(name: str, mode: cli.Mode, iterations: str | None) -> None:
+        def fake_run_local(name: str, iterations: str, runner_name: str) -> None:
             called["name"] = name
-            called["mode"] = mode
             called["iterations"] = iterations
+            called["runner_name"] = runner_name
 
         monkeypatch.setattr(cli, "_run_local", fake_run_local)
 
         result = runner.invoke(
             app=cli.app,
-            args=["run", "--local", "demo", "-m", "once"],
+            args=["run", "--local", "demo", "-i", "all"],
         )
 
         assert result.exit_code == 0
-        assert called == {"name": "demo", "mode": cli.Mode.once, "iterations": None}
+        assert called == {"name": "demo", "iterations": "all", "runner_name": "claude"}
 
     def test_routes_github_source(self, monkeypatch) -> None:
         called: dict[str, object] = {}
 
-        def fake_run_github(
-            number: int, mode: cli.Mode, iterations: str | None
-        ) -> None:
+        def fake_run_github(number: int, iterations: str, runner_name: str) -> None:
             called["number"] = number
-            called["mode"] = mode
             called["iterations"] = iterations
+            called["runner_name"] = runner_name
 
         monkeypatch.setattr(cli, "_run_github", fake_run_github)
 
         result = runner.invoke(
             app=cli.app,
-            args=["run", "--github", "42", "-m", "afk", "-i", "all"],
+            args=["run", "--github", "42", "-i", "all"],
         )
 
         assert result.exit_code == 0
         assert called == {
             "number": 42,
-            "mode": cli.Mode.afk,
             "iterations": "all",
+            "runner_name": "claude",
         }
+
+    def test_custom_runner_flag(self, monkeypatch) -> None:
+        called: dict[str, object] = {}
+
+        def fake_run_local(name: str, iterations: str, runner_name: str) -> None:
+            called["runner_name"] = runner_name
+
+        monkeypatch.setattr(cli, "_run_local", fake_run_local)
+
+        result = runner.invoke(
+            app=cli.app,
+            args=["run", "--local", "demo", "-i", "1", "--runner", "codex"],
+        )
+
+        assert result.exit_code == 0
+        assert called["runner_name"] == "codex"
+
+    def test_iterations_required(self) -> None:
+        result = runner.invoke(
+            app=cli.app,
+            args=["run", "--local", "demo"],
+        )
+        assert result.exit_code != 0
 
     def test_help_shows_run(self) -> None:
         result = runner.invoke(app=cli.app, args=["--help"])
 
         assert result.exit_code == 0
         assert "run" in result.output
+
+    def test_no_mode_flag(self) -> None:
+        result = runner.invoke(
+            app=cli.app,
+            args=["run", "--local", "demo", "-m", "afk", "-i", "1"],
+        )
+        assert result.exit_code != 0
 
 
 class TestRunSourceValidation:
@@ -94,30 +122,86 @@ class TestRunSourceValidation:
 
 class TestLegacyCommandRemoval:
     def test_spec_command_is_removed(self) -> None:
-        result = runner.invoke(app=cli.app, args=["spec", "demo", "-m", "once"])
+        result = runner.invoke(app=cli.app, args=["spec", "demo", "-i", "1"])
 
         assert result.exit_code != 0
 
     def test_prd_command_is_removed(self) -> None:
-        result = runner.invoke(app=cli.app, args=["prd", "42", "-m", "once"])
+        result = runner.invoke(app=cli.app, args=["prd", "42", "-i", "1"])
 
         assert result.exit_code != 0
 
 
-class TestGitHubNaming:
-    def test_local_once_uses_slugged_branch_suggestion(self, monkeypatch) -> None:
+class TestForgeReport:
+    def test_includes_runner_name(self) -> None:
+        results = [
+            cli.IterationResult(
+                issue_number=1,
+                issue_filename="Setup",
+                success=True,
+                elapsed_seconds=10.0,
+            )
+        ]
+        report = cli._build_forge_report(results, runner_name="claude")
+        assert "**Runner:** claude" in report
+
+    def test_completed_issue_format(self) -> None:
+        results = [
+            cli.IterationResult(
+                issue_number=1,
+                issue_filename="Setup",
+                success=True,
+                elapsed_seconds=10.0,
+            )
+        ]
+        report = cli._build_forge_report(results, runner_name="claude")
+        assert "- #1 Setup: completed" in report
+
+    def test_failed_issue_includes_error(self) -> None:
+        results = [
+            cli.IterationResult(
+                issue_number=2,
+                issue_filename="API endpoints",
+                success=False,
+                elapsed_seconds=30.0,
+                error="max turns exceeded",
+            )
+        ]
+        report = cli._build_forge_report(results, runner_name="claude")
+        assert "- #2 API endpoints: failed — max turns exceeded" in report
+
+    def test_failed_issue_unknown_error(self) -> None:
+        results = [
+            cli.IterationResult(
+                issue_number=2,
+                issue_filename="API endpoints",
+                success=False,
+                elapsed_seconds=30.0,
+            )
+        ]
+        report = cli._build_forge_report(results, runner_name="claude")
+        assert "failed — unknown error" in report
+
+    def test_closes_prd(self) -> None:
+        results = [
+            cli.IterationResult(
+                issue_number=1,
+                issue_filename="Task",
+                success=True,
+                elapsed_seconds=1.0,
+            )
+        ]
+        report = cli._build_forge_report(results, runner_name="claude", prd_number=42)
+        assert "Closes #42" in report
+
+
+class TestNaming:
+    def test_local_uses_slugged_branch_suggestion(self, monkeypatch) -> None:
         prompts: list[str] = []
 
         class FakeSource:
             def __init__(self, name: str) -> None:
                 assert name == "Customer Onboarding"
-
-            def get_next_issue(self):
-                return type(
-                    "FakeLocalIssue",
-                    (),
-                    {"number": 7, "filename": "issue.md", "content": "Issue body"},
-                )()
 
             def get_remaining_count(self) -> tuple[int, int]:
                 return (1, 3)
@@ -137,25 +221,22 @@ class TestGitHubNaming:
                 prompts.append(suggested_branch) or (suggested_branch, "main")
             ),
         )
-        monkeypatch.setattr(cli, "run_interactive", lambda prompt: None)
+        monkeypatch.setattr(
+            cli,
+            "run_afk_loop",
+            lambda **kwargs: [],
+        )
 
-        cli._run_local("Customer Onboarding", cli.Mode.once, None)
+        cli._run_local("Customer Onboarding", "1", "claude")
 
         assert prompts == ["forge/customer-onboarding"]
 
-    def test_local_once_falls_back_when_slug_is_empty(self, monkeypatch) -> None:
+    def test_local_falls_back_when_slug_is_empty(self, monkeypatch) -> None:
         prompts: list[str] = []
 
         class FakeSource:
             def __init__(self, name: str) -> None:
                 assert name == "!!!"
-
-            def get_next_issue(self):
-                return type(
-                    "FakeLocalIssue",
-                    (),
-                    {"number": 7, "filename": "issue.md", "content": "Issue body"},
-                )()
 
             def get_remaining_count(self) -> tuple[int, int]:
                 return (1, 3)
@@ -175,13 +256,17 @@ class TestGitHubNaming:
                 prompts.append(suggested_branch) or (suggested_branch, "main")
             ),
         )
-        monkeypatch.setattr(cli, "run_interactive", lambda prompt: None)
+        monkeypatch.setattr(
+            cli,
+            "run_afk_loop",
+            lambda **kwargs: [],
+        )
 
-        cli._run_local("!!!", cli.Mode.once, None)
+        cli._run_local("!!!", "1", "claude")
 
         assert prompts == ["forge/spec"]
 
-    def test_github_once_uses_slugged_branch_suggestion(self, monkeypatch) -> None:
+    def test_github_uses_slugged_branch_suggestion(self, monkeypatch) -> None:
         prompts: list[str] = []
 
         class FakeSource:
@@ -195,12 +280,6 @@ class TestGitHubNaming:
                     body="PRD body",
                 )
 
-            def get_next_issue(self) -> FakeGitHubIssue:
-                return FakeGitHubIssue(number=7, title="Task", body="Issue body")
-
-            def get_remaining_count(self) -> tuple[int, int]:
-                return (1, 3)
-
         monkeypatch.setattr(cli, "GitHubSource", FakeSource)
         monkeypatch.setattr(
             cli,
@@ -211,16 +290,15 @@ class TestGitHubNaming:
         )
         monkeypatch.setattr(
             cli,
-            "run_interactive",
-            lambda prompt: prompts.append(prompt),
+            "run_afk_loop",
+            lambda **kwargs: [],
         )
 
-        cli._run_github(42, cli.Mode.once, None)
+        cli._run_github(42, "1", "claude")
 
-        assert prompts[0] == "forge/oauth-sso-polish"
-        assert "PRD body" in prompts[1]
+        assert prompts == ["forge/oauth-sso-polish"]
 
-    def test_github_once_falls_back_to_issue_branch(self, monkeypatch) -> None:
+    def test_github_falls_back_to_issue_branch(self, monkeypatch) -> None:
         prompts: list[str] = []
 
         class FakeSource:
@@ -230,12 +308,6 @@ class TestGitHubNaming:
             def get_prd(self) -> FakeGitHubPrd:
                 return FakeGitHubPrd(number=42, title="!!!", body="PRD body")
 
-            def get_next_issue(self) -> FakeGitHubIssue:
-                return FakeGitHubIssue(number=7, title="Task", body="Issue body")
-
-            def get_remaining_count(self) -> tuple[int, int]:
-                return (1, 3)
-
         monkeypatch.setattr(cli, "GitHubSource", FakeSource)
         monkeypatch.setattr(
             cli,
@@ -244,13 +316,17 @@ class TestGitHubNaming:
                 prompts.append(suggested_branch) or (suggested_branch, "main")
             ),
         )
-        monkeypatch.setattr(cli, "run_interactive", lambda prompt: None)
+        monkeypatch.setattr(
+            cli,
+            "run_afk_loop",
+            lambda **kwargs: [],
+        )
 
-        cli._run_github(42, cli.Mode.once, None)
+        cli._run_github(42, "1", "claude")
 
         assert prompts == ["forge/issue-42"]
 
-    def test_github_afk_uses_prd_title_for_pr_title(self, monkeypatch) -> None:
+    def test_github_uses_prd_title_for_pr_title(self, monkeypatch) -> None:
         captured: dict[str, object] = {}
 
         class FakeSource:
@@ -286,13 +362,14 @@ class TestGitHubNaming:
 
         monkeypatch.setattr(cli, "_push_and_create_pr", fake_push_and_create_pr)
 
-        cli._run_github(42, cli.Mode.afk, "all")
+        cli._run_github(42, "all", "claude")
 
         assert captured["branch"] == "forge/improve-onboarding-flow"
         assert captured["pr_title"] == "Improve onboarding flow"
         assert captured["prd_number"] == 42
+        assert captured["runner_name"] == "claude"
 
-    def test_github_afk_falls_back_to_prd_number_title(self, monkeypatch) -> None:
+    def test_github_falls_back_to_prd_number_title(self, monkeypatch) -> None:
         captured: dict[str, object] = {}
 
         class FakeSource:
@@ -324,7 +401,7 @@ class TestGitHubNaming:
 
         monkeypatch.setattr(cli, "_push_and_create_pr", fake_push_and_create_pr)
 
-        cli._run_github(42, cli.Mode.afk, "all")
+        cli._run_github(42, "all", "claude")
 
         assert captured["branch"] == "forge/issue-42"
         assert captured["pr_title"] == "PRD #42"

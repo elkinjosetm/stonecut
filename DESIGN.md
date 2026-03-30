@@ -1,6 +1,6 @@
 # Forge — Design Document
 
-Forge is a CLI tool that executes PRD-driven development workflows using Claude Code. It picks up issues (vertical slices from a PRD), spawns Claude Code sessions to implement them, handles bookkeeping, and creates pull requests with execution reports.
+Forge is a CLI tool that executes PRD-driven development workflows using agentic coding CLIs. It picks up issues (vertical slices from a PRD), spawns headless CLI sessions to implement them, handles bookkeeping, and creates pull requests with execution reports.
 
 This document captures the design decisions for the initial build and future roadmap.
 
@@ -10,22 +10,21 @@ This document captures the design decisions for the initial build and future roa
 - **CLI command:** `forge`
 - **Rationale:** A PRD is a blueprint, issues are the pieces, the tool forges them into reality. The primary execution entry point is `forge run`, with source selection handled by flags.
 
-## Day One — CLI Commands
+## CLI Commands
 
 ```
-forge run --local <name> -m <once|afk> [-i <N|all>]
-forge run --github <number> -m <once|afk> [-i <N|all>]
+forge run --local <name> -i <N|all> [--runner <name>]
+forge run --github <number> -i <N|all> [--runner <name>]
 ```
 
 ### Flags
 
 | Flag | Alias | Required | Description |
 |------|-------|----------|-------------|
-| `--mode` | `-m` | Always | Execution mode: `once` or `afk` |
-| `--iterations` | `-i` | In `afk` mode | Number of issues to process, or `all` |
+| `--iterations` | `-i` | Always | Number of issues to process, or `all` |
+| `--runner` | — | No | Agentic CLI runner to use (default: `claude`) |
 
 - Missing required args produce an error with help text.
-- `--iterations` is ignored in `once` mode.
 - `--help` available on every command.
 
 ### Sources
@@ -33,57 +32,76 @@ forge run --github <number> -m <once|afk> [-i <N|all>]
 - **`forge run --local <name>`** — local PRD. Looks in `.forge/<name>/` for `prd.md` and `issues/`.
 - **`forge run --github <number>`** — GitHub PRD. Issue number on the current repo, tasks are sub-issues.
 
-## Modes
+## Runner Architecture
 
-### `once` (debug/inspect mode)
+Forge uses a runner abstraction to support multiple agentic coding CLIs. The architecture consists of:
 
-- Picks the next incomplete issue.
-- Prompts for branch name and base branch before execution.
-- Builds prompt from template (includes bookkeeping instruction so Claude marks the issue complete).
-- Spawns an **interactive** Claude Code session.
-- Forge exits — user takes over, can inspect, ask questions, adjust.
+### Runner Protocol
 
-### `afk` (autonomous mode)
+A `Runner` protocol defines a single method:
 
-- Picks the next incomplete issue.
-- Prompts for branch name and base branch before first execution.
-- Builds prompt from template.
-- Spawns **headless** Claude Code session (`claude -p`).
-- On session exit:
-  - Check exit code.
-  - On success: close issue / update `status.json`, log to `progress.txt`.
-  - On failure: mark as failed, move on.
-- Loops until iterations exhausted.
-- After all iterations complete: push branch, create PR with execution report.
+```python
+class Runner(Protocol):
+    def run(self, prompt: str) -> RunResult: ...
+```
+
+### RunResult
+
+`RunResult` is a dataclass that encapsulates the outcome of a single execution:
+
+- `success: bool` — whether the task completed successfully
+- `exit_code: int` — raw exit code from the subprocess
+- `duration_seconds: float` — wall-clock time of the execution
+- `output: str | None` — captured stdout
+- `error: str | None` — human-readable error message if the task failed
+
+Each adapter is responsible for interpreting its CLI's output and translating it into this common structure. The orchestration loop only inspects `success` and `error`.
+
+### ClaudeRunner
+
+The default runner. Spawns `claude -p --output-format json` and parses the JSON output to extract the `subtype` field. Returns `success=True` only when `subtype == "success"`. Translates error subtypes (`error_max_turns`, `error_max_budget_usd`) into human-readable messages.
+
+### Registry
+
+The `runners/` package exposes `get_runner(name: str) -> Runner`. Unknown names raise a descriptive error listing available runners. Adding a new runner means implementing a single adapter class and registering it.
+
+## Execution Flow
+
+1. Picks the next incomplete issue.
+2. Prompts for branch name and base branch before first execution.
+3. Builds prompt from template.
+4. Spawns headless session via the selected runner.
+5. On completion:
+   - Inspect `RunResult.success`.
+   - On success: close issue / update `status.json`, log to `progress.txt`.
+   - On failure: record error, move on.
+6. Loops until iterations exhausted.
+7. After all iterations: push branch, create PR with Forge Report.
 
 ### Prompt
 
-Single `execute.md` template with placeholders. Identical for both modes except:
-
-- **`once`**: includes a line instructing Claude to mark the issue complete (bookkeeping via prompt, since Forge isn't running after the session).
-- **`afk`**: does not include that line — Forge handles bookkeeping externally after the headless session exits.
-
-The mode difference in spawning is handled by Forge (interactive vs `-p` flag), not by the prompt.
+Single `execute.md` template with placeholders. The template is CLI-agnostic — runner-specific behavior is encapsulated in the adapter, not the prompt.
 
 ## Pre-execution Flow
 
-Before spawning the first Claude Code session, Forge prompts the user:
+Before spawning the first session, Forge prompts the user:
 
 1. **Branch name** — with a sensible suggestion using the unified `forge/<slug>` convention. Local mode uses the spec name, GitHub mode uses the PRD title slug, and GitHub falls back to `forge/issue-<number>` when needed.
 2. **Base branch / PR target** — suggests `main`.
 
-Same prompts for both local and GitHub sources. Simple `questionary` prompts, no AI needed.
+Simple `questionary` prompts, no AI needed.
 
 ## PR Report
 
-At the end of an `afk` run, Forge pushes the branch and creates a PR with a report:
+At the end of a run, Forge pushes the branch and creates a PR with a report:
 
 ```markdown
 ## Forge Report
+**Runner:** claude
+
 - #1 Setup database schema: completed
-- #2 API endpoints: completed
-- #3 Auth middleware: failed (non-zero exit code)
-- #4 Frontend components: completed
+- #2 API endpoints: failed — max turns exceeded
+- #3 Auth middleware: completed
 ```
 
 In GitHub mode, the PR title is the PRD issue title, with `PRD #<number>` as the fallback when the title is unavailable.
@@ -131,14 +149,17 @@ forge/
 │       ├── cli.py              # typer app, subcommands
 │       ├── github.py           # GitHub/gh CLI integration
 │       ├── local.py            # local spec operations
-│       ├── runner.py           # Claude Code spawning, loop logic
+│       ├── runner.py           # Runner protocol, RunResult, orchestration loop
 │       ├── prompt.py           # template loading and rendering
+│       ├── runners/
+│       │   ├── __init__.py     # get_runner() registry
+│       │   └── claude.py       # ClaudeRunner adapter
 │       └── templates/
 │           └── execute.md      # prompt template
 └── skills/
-    ├── grill-me/
-    ├── write-a-prd/
-    └── prd-to-issues/
+    ├── forge:interview/
+    ├── forge:prd/
+    └── forge:issues/
 ```
 
 Skills remain as Claude Code skills. They are not invoked by the CLI on day one but live in the repo for future integration.
