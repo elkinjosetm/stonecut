@@ -1,5 +1,5 @@
 ---
-name: forge:issues
+name: forge-issues
 description: Break a PRD into independently-grabbable GitHub issues or local markdown files using tracer-bullet vertical slices. Use when the user wants to convert a PRD into implementation tickets or work items.
 ---
 
@@ -11,7 +11,7 @@ You are breaking a PRD into issues as part of the PRD Forge workflow. Each issue
 
 Determine where the PRD lives. Check these in order:
 
-1. **Conversation context** — If a PRD was created earlier in this conversation (via `/forge:prd` or otherwise), you already know where it is. State where you found it and confirm with the user.
+1. **Conversation context** — If a PRD was created earlier in this conversation (via `/forge-prd` or otherwise), you already know where it is. State where you found it and confirm with the user.
 2. **Ask the user** — If no PRD is in context, ask: "Where is the PRD? Give me a local file path (e.g., `.forge/ASC-1/prd.md`) or a GitHub issue number."
 
 If given a GitHub issue number, fetch it with `gh issue view <number>`.

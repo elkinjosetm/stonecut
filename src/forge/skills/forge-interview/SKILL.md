@@ -1,5 +1,5 @@
 ---
-name: forge:interview
+name: forge-interview
 description: Stress-test a plan or design through relentless interviewing. Walk down each branch of the decision tree, resolving dependencies one-by-one until reaching shared understanding. Use when the user wants to validate an idea before writing a PRD.
 ---
 
@@ -17,4 +17,4 @@ If a question can be answered by exploring the codebase, explore the codebase in
 
 ## Next Step
 
-When the interview is complete and you've reached shared understanding, ask the user: "Ready to write the PRD? I can run `/forge:prd` next."
+When the interview is complete and you've reached shared understanding, ask the user: "Ready to write the PRD? I can run `/forge-prd` next."
