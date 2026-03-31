@@ -7,6 +7,7 @@
 import {
 	existsSync,
 	lstatSync,
+	statSync,
 	mkdirSync,
 	readlinkSync,
 	realpathSync,
@@ -73,7 +74,7 @@ export function setupSkills(claudeRoot?: string): SkillsOutput {
 	const sourceDir = getSkillsSourceDir();
 	const output: SkillsOutput = { messages: [], warnings: [] };
 
-	if (!existsSync(sourceDir) || !lstatSync(sourceDir).isDirectory()) {
+	if (!existsSync(sourceDir) || !statSync(sourceDir).isDirectory()) {
 		throw new Error(`Skills directory not found at ${sourceDir}`);
 	}
 
@@ -92,7 +93,7 @@ export function setupSkills(claudeRoot?: string): SkillsOutput {
 		const source = join(sourceDir, name);
 		const target = join(targetDir, name);
 
-		if (!existsSync(source) || !lstatSync(source).isDirectory()) {
+		if (!existsSync(source) || !statSync(source).isDirectory()) {
 			output.warnings.push(`Warning: skill source not found: ${source}`);
 			continue;
 		}
@@ -139,7 +140,7 @@ export function removeSkills(claudeRoot?: string): SkillsOutput {
 	const targetDir = getSkillsTargetDir({ create: false, claudeRoot });
 	const output: SkillsOutput = { messages: [], warnings: [] };
 
-	if (!existsSync(targetDir) || !lstatSync(targetDir).isDirectory()) {
+	if (!existsSync(targetDir) || !statSync(targetDir).isDirectory()) {
 		return output;
 	}
 
