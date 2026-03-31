@@ -23,6 +23,7 @@ import { slugifyBranchComponent } from "./naming";
 import { renderGithub, renderLocal } from "./prompt";
 import { runAfkLoop } from "./runner";
 import { getRunner } from "./runners/index";
+import { setupSkills, removeSkills } from "./skills";
 import type { GitHubIssue, Issue, IterationResult } from "./types";
 
 const require = createRequire(import.meta.url);
@@ -289,6 +290,40 @@ export function buildProgram(): Command {
         await runLocal(source.name, iterations, runnerName);
       } else {
         await runGitHub(source.number, iterations, runnerName);
+      }
+    });
+
+  program
+    .command("setup-skills")
+    .description("Install Forge skills as symlinks into ~/.claude/skills/.")
+    .option(
+      "--target <path>",
+      "Claude root path (e.g. ~/.claude-acme). Skills are installed into <target>/skills/.",
+    )
+    .action((opts) => {
+      const result = setupSkills(opts.target);
+      for (const msg of result.messages) {
+        console.log(msg);
+      }
+      for (const warn of result.warnings) {
+        console.error(warn);
+      }
+    });
+
+  program
+    .command("remove-skills")
+    .description("Remove Forge skill symlinks from ~/.claude/skills/.")
+    .option(
+      "--target <path>",
+      "Claude root path (e.g. ~/.claude-acme). Skills are removed from <target>/skills/.",
+    )
+    .action((opts) => {
+      const result = removeSkills(opts.target);
+      for (const msg of result.messages) {
+        console.log(msg);
+      }
+      for (const warn of result.warnings) {
+        console.error(warn);
       }
     });
 
