@@ -1,18 +1,13 @@
 #!/usr/bin/env bash
-# Pre-commit hook: run ruff lint and format checks.
+# Pre-commit hook: run eslint and prettier checks.
 # Install: git config core.hooksPath .githooks
 
 set -euo pipefail
 
-VENV_BIN="$(git rev-parse --show-toplevel)/.venv/bin"
+ROOT="$(git rev-parse --show-toplevel)"
 
-if [ ! -x "$VENV_BIN/ruff" ]; then
-  echo "Error: ruff not found in .venv. Run: pip install '.[dev]'" >&2
-  exit 1
-fi
+echo "Running eslint..."
+cd "$ROOT" && npx eslint src/ tests/
 
-echo "Running ruff check..."
-"$VENV_BIN/ruff" check .
-
-echo "Running ruff format --check..."
-"$VENV_BIN/ruff" format --check .
+echo "Running prettier --check..."
+cd "$ROOT" && npx prettier --check .

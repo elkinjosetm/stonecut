@@ -1,8 +1,5 @@
 .claude/settings.local.json
-.venv/
-__pycache__/
-*.egg-info/
-src/*.egg-info/
 node_modules/
 dist/
 bun.lock
+*.tsbuildinfo

@@ -19,35 +19,52 @@ For projects using GitHub issues, we recommend tracking ideas with a `roadmap` l
 
 ## Installation
 
-### Install from source (recommended)
+### Prerequisites
+
+- [Bun](https://bun.sh/) — install with `curl -fsSL https://bun.sh/install | bash`
+- An agentic coding CLI — [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`) is the default runner and must be in your PATH. [OpenAI Codex CLI](https://github.com/openai/codex) (`codex`) is required only when using `--runner codex`.
+- [GitHub CLI](https://cli.github.com/) — `gh`, authenticated. Required for GitHub mode and for pushing branches / creating PRs in local mode.
+
+### Install from npm
 
 ```sh
-git clone https://github.com/elkinjosetm/prd-forge.git
-cd prd-forge
-
-# macOS
-brew install pipx
-# For Linux/Windows, see https://pipx.pypa.io/stable/installation/
-
-pipx install -e .
+bun add -g prd-forge
 ```
 
-This makes the `forge` command globally available — no venv activation needed. Source code changes are picked up automatically; dependency or metadata changes (e.g., `pyproject.toml` edits) require running `pipx install -e . --force` again. Then install the Claude Code skills:
+This makes the `forge` command globally available. Then install the Claude Code skills:
 
 ```sh
 forge setup-skills
 ```
 
-### Dev dependencies and hooks
+### Install from source
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+git clone https://github.com/elkinjosetm/prd-forge.git
+cd prd-forge
+bun install
+```
+
+To run the CLI from source:
+
+```sh
+bun run src/cli.ts
+```
+
+### Dev setup
+
+```sh
+bun install
 git config core.hooksPath .githooks
 ```
 
-This installs `ruff` and `pytest`, and activates a pre-commit hook that runs lint and format checks before each commit.
+This installs all dependencies and activates a pre-commit hook that runs eslint and prettier checks before each commit.
+
+Run tests:
+
+```sh
+bun test
+```
 
 ## Usage
 
@@ -143,9 +160,3 @@ To remove the symlinks:
 forge remove-skills              # default (~/.claude)
 forge remove-skills --target ~/.claude-acme
 ```
-
-## Prerequisites
-
-- Python 3.10+
-- An agentic coding CLI — [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`) is the default runner and must be in your PATH. [OpenAI Codex CLI](https://github.com/openai/codex) (`codex`) is required only when using `--runner codex`.
-- [GitHub CLI](https://cli.github.com/) — `gh`, authenticated. Required for GitHub mode and for pushing branches / creating PRs in local mode.
