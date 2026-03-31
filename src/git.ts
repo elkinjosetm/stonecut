@@ -1,8 +1,11 @@
 /**
- * Git branch-level operations — branch management, working tree checks, and PR creation.
+ * Git branch-level operations — branch management, working tree checks,
+ * working tree lifecycle (snapshot/stage/commit/revert), and PR creation.
  *
  * All functions throw on failure. No process.exit, no console output.
  */
+
+import type { WorkingTreeSnapshot } from "./types";
 
 function runSync(
   cmd: string[],
@@ -91,5 +94,97 @@ export function createPr(
   ]);
   if (result.exitCode !== 0) {
     throw new Error(`Failed to create PR: ${result.stderr.trim()}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Working tree lifecycle — snapshot / stage / commit / revert
+// ---------------------------------------------------------------------------
+
+/** Capture the current set of untracked files before a runner session. */
+export function snapshotWorkingTree(): WorkingTreeSnapshot {
+  const result = runSync(["git", "status", "--porcelain"]);
+  const untracked = new Set<string>();
+  for (const line of result.stdout.split("\n")) {
+    if (line.startsWith("??")) {
+      untracked.add(line.slice(3).trim());
+    }
+  }
+  return { untracked };
+}
+
+/**
+ * Stage files changed during a runner session.
+ *
+ * Stages modified tracked files and new untracked files that were not
+ * present in the snapshot. Returns true if anything was staged.
+ */
+export function stageChanges(snapshot: WorkingTreeSnapshot): boolean {
+  // Stage all modified tracked files
+  const addU = runSync(["git", "add", "-u"]);
+  if (addU.exitCode !== 0) {
+    throw new Error(`Failed to stage tracked changes: ${addU.stderr.trim()}`);
+  }
+
+  // Find new untracked files (not in pre-run snapshot)
+  const status = runSync(["git", "status", "--porcelain"]);
+  const newFiles: string[] = [];
+  for (const line of status.stdout.split("\n")) {
+    if (line.startsWith("??")) {
+      const path = line.slice(3).trim();
+      if (!snapshot.untracked.has(path)) {
+        newFiles.push(path);
+      }
+    }
+  }
+
+  if (newFiles.length > 0) {
+    const addNew = runSync(["git", "add", "--", ...newFiles]);
+    if (addNew.exitCode !== 0) {
+      throw new Error(`Failed to stage new files: ${addNew.stderr.trim()}`);
+    }
+  }
+
+  // Check if anything is staged
+  const diff = runSync(["git", "diff", "--cached", "--quiet"]);
+  return diff.exitCode !== 0;
+}
+
+/**
+ * Create a git commit with the given message.
+ *
+ * Returns [success, output]. On failure the output contains the
+ * error details (e.g. pre-commit hook output).
+ */
+export function commitChanges(message: string): [boolean, string] {
+  const result = runSync(["git", "commit", "-m", message]);
+  const output = `${result.stdout}\n${result.stderr}`.trim();
+  return [result.exitCode === 0, output];
+}
+
+/**
+ * Revert uncommitted changes, restoring the tree to the last commit.
+ *
+ * Removes new untracked files created during the runner session (those
+ * not in the snapshot) and restores modified tracked files.
+ */
+export function revertUncommitted(snapshot: WorkingTreeSnapshot): void {
+  // Restore modified tracked files
+  runSync(["git", "checkout", "."]);
+
+  // Remove new untracked files (only those created during the session)
+  const status = runSync(["git", "status", "--porcelain"]);
+  const newFiles: string[] = [];
+  for (const line of status.stdout.split("\n")) {
+    if (line.startsWith("??")) {
+      const path = line.slice(3).trim();
+      if (!snapshot.untracked.has(path)) {
+        newFiles.push(path);
+      }
+    }
+  }
+
+  if (newFiles.length > 0) {
+    runSync(["git", "clean", "-fd", "--", ...newFiles]);
   }
 }

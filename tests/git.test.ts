@@ -3,7 +3,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -12,7 +12,12 @@ import {
   ensureCleanTree,
   pushBranch,
   createPr,
+  snapshotWorkingTree,
+  stageChanges,
+  commitChanges,
+  revertUncommitted,
 } from "../src/git";
+import type { WorkingTreeSnapshot } from "../src/types";
 
 /** Saved cwd so we can restore after each test. */
 let savedCwd: string;
@@ -208,5 +213,141 @@ describe("createPr", () => {
     expect(() => createPr("Test PR", "body", "main")).toThrow(
       "Failed to create PR",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// snapshotWorkingTree
+// ---------------------------------------------------------------------------
+
+describe("snapshotWorkingTree", () => {
+  test("captures untracked files", () => {
+    const dir = makeGitRepo();
+    writeFileSync(join(dir, "junk.txt"), "pre-existing junk");
+    const snapshot = snapshotWorkingTree();
+    expect(snapshot.untracked.has("junk.txt")).toBe(true);
+  });
+
+  test("empty when clean", () => {
+    makeGitRepo();
+    const snapshot = snapshotWorkingTree();
+    expect(snapshot.untracked.size).toBe(0);
+  });
+
+  test("does not include tracked modified files", () => {
+    const dir = makeGitRepo();
+    writeFileSync(join(dir, "README.md"), "modified\n");
+    const snapshot = snapshotWorkingTree();
+    expect(snapshot.untracked.has("README.md")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// stageChanges
+// ---------------------------------------------------------------------------
+
+describe("stageChanges", () => {
+  test("stages modified tracked files", () => {
+    const dir = makeGitRepo();
+    const snapshot: WorkingTreeSnapshot = { untracked: new Set() };
+    writeFileSync(join(dir, "README.md"), "modified\n");
+    expect(stageChanges(snapshot)).toBe(true);
+  });
+
+  test("stages new files not in snapshot", () => {
+    const dir = makeGitRepo();
+    const snapshot: WorkingTreeSnapshot = { untracked: new Set() };
+    writeFileSync(join(dir, "new_file.py"), "print('hello')\n");
+    expect(stageChanges(snapshot)).toBe(true);
+  });
+
+  test("ignores pre-existing untracked files", () => {
+    const dir = makeGitRepo();
+    writeFileSync(join(dir, "junk.txt"), "pre-existing junk");
+    const snapshot = snapshotWorkingTree();
+    // No actual changes during "session"
+    expect(stageChanges(snapshot)).toBe(false);
+  });
+
+  test("returns false when no changes", () => {
+    makeGitRepo();
+    const snapshot: WorkingTreeSnapshot = { untracked: new Set() };
+    expect(stageChanges(snapshot)).toBe(false);
+  });
+
+  test("stages mix of modified and new files", () => {
+    const dir = makeGitRepo();
+    const snapshot: WorkingTreeSnapshot = { untracked: new Set() };
+    writeFileSync(join(dir, "README.md"), "modified\n");
+    writeFileSync(join(dir, "new_file.py"), "print('hello')\n");
+    expect(stageChanges(snapshot)).toBe(true);
+    // Verify both are staged
+    const result = Bun.spawnSync(["git", "diff", "--cached", "--name-only"], {
+      stdout: "pipe",
+    });
+    const staged = new Set(result.stdout.toString().trim().split("\n"));
+    expect(staged.has("README.md")).toBe(true);
+    expect(staged.has("new_file.py")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// commitChanges
+// ---------------------------------------------------------------------------
+
+describe("commitChanges", () => {
+  test("successful commit", () => {
+    const dir = makeGitRepo();
+    writeFileSync(join(dir, "README.md"), "modified\n");
+    Bun.spawnSync(["git", "add", "-u"], { stdout: "pipe", stderr: "pipe" });
+    const [ok, output] = commitChanges("test commit");
+    expect(ok).toBe(true);
+    // Verify commit exists
+    const result = Bun.spawnSync(["git", "log", "--oneline", "-1"], {
+      stdout: "pipe",
+    });
+    expect(result.stdout.toString()).toContain("test commit");
+  });
+
+  test("fails when nothing is staged", () => {
+    makeGitRepo();
+    const [ok] = commitChanges("should fail");
+    expect(ok).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// revertUncommitted
+// ---------------------------------------------------------------------------
+
+describe("revertUncommitted", () => {
+  test("reverts modified tracked files", () => {
+    const dir = makeGitRepo();
+    const snapshot: WorkingTreeSnapshot = { untracked: new Set() };
+    writeFileSync(join(dir, "README.md"), "modified\n");
+    revertUncommitted(snapshot);
+    const content = Bun.file(join(dir, "README.md")).text();
+    expect(content).resolves.toBe("# test\n");
+  });
+
+  test("removes new files not in snapshot", () => {
+    const dir = makeGitRepo();
+    const snapshot: WorkingTreeSnapshot = { untracked: new Set() };
+    writeFileSync(join(dir, "new_file.py"), "print('hello')\n");
+    revertUncommitted(snapshot);
+    expect(existsSync(join(dir, "new_file.py"))).toBe(false);
+  });
+
+  test("preserves pre-existing untracked files", () => {
+    const dir = makeGitRepo();
+    writeFileSync(join(dir, "junk.txt"), "pre-existing junk");
+    const snapshot = snapshotWorkingTree();
+    writeFileSync(join(dir, "new_file.py"), "should be removed\n");
+    writeFileSync(join(dir, "README.md"), "modified\n");
+    revertUncommitted(snapshot);
+    expect(existsSync(join(dir, "junk.txt"))).toBe(true);
+    expect(existsSync(join(dir, "new_file.py"))).toBe(false);
+    const content = Bun.file(join(dir, "README.md")).text();
+    expect(content).resolves.toBe("# test\n");
   });
 });
