@@ -151,16 +151,18 @@ export function removeSkills(claudeRoot?: string): SkillsOutput {
 		}
 
 		// Only remove if it points into the Forge package
+		let resolved: string;
 		try {
-			const resolved = realpathSync(target);
-			const expected = realpathSync(join(sourceDir, name));
-			if (resolved !== expected) {
-				continue;
-			}
+			resolved = realpathSync(target);
 		} catch {
 			// Dangling symlink — safe to remove
 			unlinkSync(target);
 			output.messages.push(`Removed dangling link ${name}`);
+			continue;
+		}
+
+		const expectedPath = join(sourceDir, name);
+		if (!existsSync(expectedPath) || resolved !== realpathSync(expectedPath)) {
 			continue;
 		}
 
