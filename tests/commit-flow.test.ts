@@ -1,9 +1,13 @@
 /**
  * Tests for verifyAndFix, commitIssue, runAfkLoop, fmtTime, and printSummary.
+ *
+ * Git operations are injected via the GitOps parameter instead of using
+ * mock.module, which leaks across test files in Bun's single-process runner.
  */
 
-import { describe, expect, mock, spyOn, test } from "bun:test";
-import type { RunResult, Runner, Source, WorkingTreeSnapshot } from "../src/types";
+import { describe, expect, spyOn, test } from "bun:test";
+import { verifyAndFix, commitIssue, runAfkLoop, fmtTime, printSummary } from "../src/runner";
+import type { GitOps, RunResult, Runner, Source, WorkingTreeSnapshot } from "../src/types";
 
 // -- Fake runner --------------------------------------------------------------
 
@@ -19,6 +23,18 @@ class FakeRunner implements Runner {
 		this.calls.push(prompt);
 		return { success: this._success, exitCode: 0, durationSeconds: 0.1 };
 	}
+}
+
+// -- Fake git ops -------------------------------------------------------------
+
+function fakeGitOps(overrides: Partial<GitOps> = {}): GitOps {
+	return {
+		snapshotWorkingTree: () => ({ untracked: new Set() }),
+		stageChanges: () => true,
+		commitChanges: () => [true, "committed"],
+		revertUncommitted: () => {},
+		...overrides,
+	};
 }
 
 // -- Fake issue / source for runAfkLoop tests --------------------------------
@@ -65,8 +81,6 @@ class FakeSource implements Source<FakeIssue> {
 
 describe("verifyAndFix", () => {
 	test("passes on first check", async () => {
-		// Import fresh module for each test group
-		const { verifyAndFix } = await import("../src/runner");
 		const runner = new FakeRunner();
 
 		const [ok, output] = await verifyAndFix(
@@ -81,7 +95,6 @@ describe("verifyAndFix", () => {
 	});
 
 	test("fix then pass", async () => {
-		const { verifyAndFix } = await import("../src/runner");
 		const runner = new FakeRunner();
 		let callCount = 0;
 
@@ -102,7 +115,6 @@ describe("verifyAndFix", () => {
 	});
 
 	test("fix then still fails", async () => {
-		const { verifyAndFix } = await import("../src/runner");
 		const runner = new FakeRunner();
 
 		const [ok, output] = await verifyAndFix(
@@ -123,20 +135,10 @@ describe("commitIssue", () => {
 	const snapshot: WorkingTreeSnapshot = { untracked: new Set() };
 
 	test("commit succeeds on first attempt", async () => {
-		// Mock git module before importing runner
-		const stageChangesMock = mock(() => true);
-		const commitChangesMock = mock(() => [true, "committed"] as [boolean, string]);
-
-		mock.module("../src/git", () => ({
-			stageChanges: stageChangesMock,
-			commitChanges: commitChangesMock,
-		}));
-
-		// Re-import to pick up mocked module
-		const { commitIssue } = await import("../src/runner");
 		const runner = new FakeRunner();
+		const git = fakeGitOps();
 
-		const [ok, output] = await commitIssue(runner, "test commit", snapshot);
+		const [ok, output] = await commitIssue(runner, "test commit", snapshot, 3, git);
 
 		expect(ok).toBe(true);
 		expect(output).toBe("committed");
@@ -144,25 +146,19 @@ describe("commitIssue", () => {
 	});
 
 	test("commit retry on hook failure", async () => {
+		const runner = new FakeRunner();
 		let commitAttempts = 0;
-		const stageChangesMock = mock(() => true);
-		const commitChangesMock = mock(() => {
-			commitAttempts++;
-			if (commitAttempts <= 1) {
-				return [false, "pre-commit hook failed"] as [boolean, string];
-			}
-			return [true, "committed"] as [boolean, string];
+		const git = fakeGitOps({
+			commitChanges: () => {
+				commitAttempts++;
+				if (commitAttempts <= 1) {
+					return [false, "pre-commit hook failed"];
+				}
+				return [true, "committed"];
+			},
 		});
 
-		mock.module("../src/git", () => ({
-			stageChanges: stageChangesMock,
-			commitChanges: commitChangesMock,
-		}));
-
-		const { commitIssue } = await import("../src/runner");
-		const runner = new FakeRunner();
-
-		const [ok, output] = await commitIssue(runner, "test commit", snapshot);
+		const [ok, output] = await commitIssue(runner, "test commit", snapshot, 3, git);
 
 		expect(ok).toBe(true);
 		expect(output).toBe("committed");
@@ -173,18 +169,12 @@ describe("commitIssue", () => {
 	});
 
 	test("commit exhaustion after max retries", async () => {
-		const stageChangesMock = mock(() => true);
-		const commitChangesMock = mock(() => [false, "hook failed"] as [boolean, string]);
-
-		mock.module("../src/git", () => ({
-			stageChanges: stageChangesMock,
-			commitChanges: commitChangesMock,
-		}));
-
-		const { commitIssue } = await import("../src/runner");
 		const runner = new FakeRunner();
+		const git = fakeGitOps({
+			commitChanges: () => [false, "hook failed"],
+		});
 
-		const [ok, output] = await commitIssue(runner, "test commit", snapshot, 3);
+		const [ok, output] = await commitIssue(runner, "test commit", snapshot, 3, git);
 
 		expect(ok).toBe(false);
 		expect(output).toBe("hook failed");
@@ -193,18 +183,12 @@ describe("commitIssue", () => {
 	});
 
 	test("session stops after single retry with maxRetries=1", async () => {
-		const stageChangesMock = mock(() => true);
-		const commitChangesMock = mock(() => [false, "error"] as [boolean, string]);
-
-		mock.module("../src/git", () => ({
-			stageChanges: stageChangesMock,
-			commitChanges: commitChangesMock,
-		}));
-
-		const { commitIssue } = await import("../src/runner");
 		const runner = new FakeRunner();
+		const git = fakeGitOps({
+			commitChanges: () => [false, "error"],
+		});
 
-		const [ok, _output] = await commitIssue(runner, "msg", snapshot, 1);
+		const [ok, _output] = await commitIssue(runner, "msg", snapshot, 1, git);
 
 		expect(ok).toBe(false);
 		// Only 1 retry, so 1 runner fix call
@@ -215,21 +199,18 @@ describe("commitIssue", () => {
 // -- fmtTime ------------------------------------------------------------------
 
 describe("fmtTime", () => {
-	test("formats seconds under 60", async () => {
-		const { fmtTime } = await import("../src/runner");
+	test("formats seconds under 60", () => {
 		expect(fmtTime(5)).toBe("5s");
 		expect(fmtTime(0)).toBe("0s");
 		expect(fmtTime(59)).toBe("59s");
 	});
 
-	test("formats seconds with rounding", async () => {
-		const { fmtTime } = await import("../src/runner");
+	test("formats seconds with rounding", () => {
 		expect(fmtTime(2.4)).toBe("2s");
 		expect(fmtTime(2.6)).toBe("3s");
 	});
 
-	test("formats minutes and seconds", async () => {
-		const { fmtTime } = await import("../src/runner");
+	test("formats minutes and seconds", () => {
 		expect(fmtTime(60)).toBe("1m 0s");
 		expect(fmtTime(90)).toBe("1m 30s");
 		expect(fmtTime(155)).toBe("2m 35s");
@@ -239,8 +220,7 @@ describe("fmtTime", () => {
 // -- printSummary -------------------------------------------------------------
 
 describe("printSummary", () => {
-	test("prints nothing for empty results", async () => {
-		const { printSummary } = await import("../src/runner");
+	test("prints nothing for empty results", () => {
 		const logSpy = spyOn(console, "log").mockImplementation(() => {});
 		try {
 			printSummary([], 10);
@@ -250,8 +230,7 @@ describe("printSummary", () => {
 		}
 	});
 
-	test("prints per-issue status and totals", async () => {
-		const { printSummary } = await import("../src/runner");
+	test("prints per-issue status and totals", () => {
 		const output: string[] = [];
 		const logSpy = spyOn(console, "log").mockImplementation((...args) => {
 			output.push(args.join(" "));
@@ -303,15 +282,8 @@ describe("runAfkLoop", () => {
 				};
 			},
 		};
+		const git = fakeGitOps();
 
-		mock.module("../src/git", () => ({
-			snapshotWorkingTree: () => ({ untracked: new Set() }),
-			stageChanges: () => true,
-			commitChanges: () => [true, "ok"] as [boolean, string],
-			revertUncommitted: () => {},
-		}));
-
-		const { runAfkLoop } = await import("../src/runner");
 		const logSpy = spyOn(console, "log").mockImplementation(() => {});
 		try {
 			const results = await runAfkLoop(
@@ -321,6 +293,9 @@ describe("runAfkLoop", () => {
 				(i) => i.title,
 				(i) => `#${i.number}: ${i.title}`,
 				failRunner,
+				"claude",
+				undefined,
+				git,
 			);
 
 			expect(results).toHaveLength(1);
@@ -334,17 +309,9 @@ describe("runAfkLoop", () => {
 	test("no changes marks failure and calls onNoChanges", async () => {
 		const source = new FakeSource([{ number: 1, title: "Task 1" }]);
 		const runner = new FakeRunner(true);
-
 		const noChangesCalled: number[] = [];
+		const git = fakeGitOps({ stageChanges: () => false });
 
-		mock.module("../src/git", () => ({
-			snapshotWorkingTree: () => ({ untracked: new Set() }),
-			stageChanges: () => false,
-			commitChanges: () => [true, "ok"] as [boolean, string],
-			revertUncommitted: () => {},
-		}));
-
-		const { runAfkLoop } = await import("../src/runner");
 		const logSpy = spyOn(console, "log").mockImplementation(() => {});
 		try {
 			const results = await runAfkLoop(
@@ -358,6 +325,7 @@ describe("runAfkLoop", () => {
 				(issue) => {
 					noChangesCalled.push(issue.number);
 				},
+				git,
 			);
 
 			expect(results).toHaveLength(1);
@@ -373,15 +341,8 @@ describe("runAfkLoop", () => {
 	test("successful commit completes issue", async () => {
 		const source = new FakeSource([{ number: 1, title: "Task 1" }]);
 		const runner = new FakeRunner(true);
+		const git = fakeGitOps();
 
-		mock.module("../src/git", () => ({
-			snapshotWorkingTree: () => ({ untracked: new Set() }),
-			stageChanges: () => true,
-			commitChanges: () => [true, "committed"] as [boolean, string],
-			revertUncommitted: () => {},
-		}));
-
-		const { runAfkLoop } = await import("../src/runner");
 		const logSpy = spyOn(console, "log").mockImplementation(() => {});
 		try {
 			const results = await runAfkLoop(
@@ -391,6 +352,9 @@ describe("runAfkLoop", () => {
 				(i) => i.title,
 				(i) => `#${i.number}: ${i.title}`,
 				runner,
+				"claude",
+				undefined,
+				git,
 			);
 
 			expect(results).toHaveLength(1);
@@ -407,15 +371,8 @@ describe("runAfkLoop", () => {
 			{ number: 2, title: "Task 2" },
 		]);
 		const runner = new FakeRunner(true);
+		const git = fakeGitOps({ commitChanges: () => [false, "hook failed"] });
 
-		mock.module("../src/git", () => ({
-			snapshotWorkingTree: () => ({ untracked: new Set() }),
-			stageChanges: () => true,
-			commitChanges: () => [false, "hook failed"] as [boolean, string],
-			revertUncommitted: () => {},
-		}));
-
-		const { runAfkLoop } = await import("../src/runner");
 		const logSpy = spyOn(console, "log").mockImplementation(() => {});
 		try {
 			const results = await runAfkLoop(
@@ -425,6 +382,9 @@ describe("runAfkLoop", () => {
 				(i) => i.title,
 				(i) => `#${i.number}: ${i.title}`,
 				runner,
+				"claude",
+				undefined,
+				git,
 			);
 
 			// Only one result — session stopped
@@ -440,23 +400,17 @@ describe("runAfkLoop", () => {
 	test("commit retry succeeds", async () => {
 		const source = new FakeSource([{ number: 1, title: "Task 1" }]);
 		const runner = new FakeRunner(true);
-
 		let commitAttempts = 0;
-
-		mock.module("../src/git", () => ({
-			snapshotWorkingTree: () => ({ untracked: new Set() }),
-			stageChanges: () => true,
+		const git = fakeGitOps({
 			commitChanges: () => {
 				commitAttempts++;
 				if (commitAttempts <= 1) {
-					return [false, "pre-commit hook failed"] as [boolean, string];
+					return [false, "pre-commit hook failed"];
 				}
-				return [true, "committed"] as [boolean, string];
+				return [true, "committed"];
 			},
-			revertUncommitted: () => {},
-		}));
+		});
 
-		const { runAfkLoop } = await import("../src/runner");
 		const logSpy = spyOn(console, "log").mockImplementation(() => {});
 		try {
 			const results = await runAfkLoop(
@@ -466,6 +420,9 @@ describe("runAfkLoop", () => {
 				(i) => i.title,
 				(i) => `#${i.number}: ${i.title}`,
 				runner,
+				"claude",
+				undefined,
+				git,
 			);
 
 			expect(results).toHaveLength(1);
@@ -478,15 +435,8 @@ describe("runAfkLoop", () => {
 
 	test("runner name printed in header", async () => {
 		const source = new FakeSource([]);
+		const git = fakeGitOps();
 
-		mock.module("../src/git", () => ({
-			snapshotWorkingTree: () => ({ untracked: new Set() }),
-			stageChanges: () => true,
-			commitChanges: () => [true, "ok"] as [boolean, string],
-			revertUncommitted: () => {},
-		}));
-
-		const { runAfkLoop } = await import("../src/runner");
 		const output: string[] = [];
 		const logSpy = spyOn(console, "log").mockImplementation((...args) => {
 			output.push(args.join(" "));
@@ -500,6 +450,8 @@ describe("runAfkLoop", () => {
 				() => "",
 				new FakeRunner(),
 				"codex",
+				undefined,
+				git,
 			);
 
 			expect(output.join("\n")).toContain("Runner: codex");
@@ -510,15 +462,8 @@ describe("runAfkLoop", () => {
 
 	test("all issues complete message when no issues", async () => {
 		const source = new FakeSource([]);
+		const git = fakeGitOps();
 
-		mock.module("../src/git", () => ({
-			snapshotWorkingTree: () => ({ untracked: new Set() }),
-			stageChanges: () => true,
-			commitChanges: () => [true, "ok"] as [boolean, string],
-			revertUncommitted: () => {},
-		}));
-
-		const { runAfkLoop } = await import("../src/runner");
 		const output: string[] = [];
 		const logSpy = spyOn(console, "log").mockImplementation((...args) => {
 			output.push(args.join(" "));
@@ -531,6 +476,9 @@ describe("runAfkLoop", () => {
 				() => "",
 				() => "",
 				new FakeRunner(),
+				"claude",
+				undefined,
+				git,
 			);
 
 			expect(output.join("\n")).toContain("All issues complete!");

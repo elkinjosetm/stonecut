@@ -30,6 +30,14 @@ export interface WorkingTreeSnapshot {
 	untracked: Set<string>;
 }
 
+/** Git operations used by the runner loop, injectable for testing. */
+export interface GitOps {
+	snapshotWorkingTree(): WorkingTreeSnapshot;
+	stageChanges(snapshot: WorkingTreeSnapshot): boolean;
+	commitChanges(message: string): [boolean, string];
+	revertUncommitted(snapshot: WorkingTreeSnapshot): void;
+}
+
 /** A single issue from a local spec. */
 export interface Issue {
 	number: number;

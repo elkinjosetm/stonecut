@@ -47,6 +47,18 @@ export function parseIterations(value: string): number | "all" {
 }
 
 /**
+ * Parse the --github value: must be a positive integer.
+ * Throws InvalidArgumentError on bad input so Commander surfaces it.
+ */
+export function parseGitHubIssueNumber(value: string): number {
+	const n = Number(value);
+	if (!Number.isInteger(n) || n <= 0) {
+		throw new InvalidArgumentError(`Must be a positive integer, got '${value}'`);
+	}
+	return n;
+}
+
+/**
  * Ensure exactly one of --local or --github was provided.
  * Returns a tagged tuple so the caller can dispatch.
  */
@@ -86,7 +98,7 @@ export function buildForgeReport(
 		}
 	}
 
-	if (prdNumber !== undefined) {
+	if (prdNumber !== undefined && results.every((r) => r.success)) {
 		lines.push("");
 		lines.push(`Closes #${prdNumber}`);
 	}
@@ -199,7 +211,7 @@ export async function runLocal(
 		runnerName,
 	);
 
-	if (results.length > 0) {
+	if (results.some((r) => r.success)) {
 		pushAndCreatePr(results, branch, baseBranch, `Forge: ${name}`, runnerName);
 	}
 }
@@ -236,7 +248,7 @@ export async function runGitHub(
 		(issue, output) => commentOnIssue(issue.number, output),
 	);
 
-	if (results.length > 0) {
+	if (results.some((r) => r.success)) {
 		pushAndCreatePr(results, branch, baseBranch, prTitle, runnerName, number);
 	}
 }
@@ -257,7 +269,7 @@ export function buildProgram(): Command {
 		.command("run")
 		.description("Execute issues from a local PRD or GitHub PRD.")
 		.option("--local <name>", "Local PRD name (.forge/<name>/)")
-		.option("--github <number>", "GitHub PRD issue number", parseInt)
+		.option("--github <number>", "GitHub PRD issue number", parseGitHubIssueNumber)
 		.requiredOption("-i, --iterations <value>", "Number of issues to process, or 'all'")
 		.option("--runner <name>", "Agentic CLI runner (claude, codex)", "claude")
 		.action(async (opts) => {

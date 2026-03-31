@@ -98,9 +98,17 @@ export function setupSkills(claudeRoot?: string): SkillsOutput {
 		}
 
 		if (isSymlink(target)) {
-			const existing = realpathSync(target);
-			if (existing === realpathSync(source)) {
-				// Already points to the right place — skip silently
+			try {
+				const existing = realpathSync(target);
+				if (existing === realpathSync(source)) {
+					// Already points to the right place — skip silently
+					continue;
+				}
+			} catch {
+				// Dangling symlink — remove it and re-create below
+				unlinkSync(target);
+				symlinkSync(source, target);
+				output.messages.push(`Replaced dangling link ${name} -> ${source}`);
 				continue;
 			}
 			const linkTarget = readlinkSync(target);
@@ -143,9 +151,16 @@ export function removeSkills(claudeRoot?: string): SkillsOutput {
 		}
 
 		// Only remove if it points into the Forge package
-		const resolved = realpathSync(target);
-		const expected = realpathSync(join(sourceDir, name));
-		if (resolved !== expected) {
+		try {
+			const resolved = realpathSync(target);
+			const expected = realpathSync(join(sourceDir, name));
+			if (resolved !== expected) {
+				continue;
+			}
+		} catch {
+			// Dangling symlink — safe to remove
+			unlinkSync(target);
+			output.messages.push(`Removed dangling link ${name}`);
 			continue;
 		}
 

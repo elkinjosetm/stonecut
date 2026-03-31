@@ -9,8 +9,21 @@
  * Modules throw on failure. No process.exit, no console output.
  */
 
-import { commitChanges, revertUncommitted, snapshotWorkingTree, stageChanges } from "./git";
-import type { IterationResult, Runner, Source, WorkingTreeSnapshot } from "./types";
+import {
+	commitChanges as realCommitChanges,
+	revertUncommitted as realRevertUncommitted,
+	snapshotWorkingTree as realSnapshotWorkingTree,
+	stageChanges as realStageChanges,
+} from "./git";
+import type { GitOps, IterationResult, Runner, Source, WorkingTreeSnapshot } from "./types";
+
+/** Default git operations that call the real git module. */
+export const defaultGitOps: GitOps = {
+	snapshotWorkingTree: realSnapshotWorkingTree,
+	stageChanges: realStageChanges,
+	commitChanges: realCommitChanges,
+	revertUncommitted: realRevertUncommitted,
+};
 
 /**
  * Single check → fix cycle.
@@ -45,14 +58,15 @@ export async function commitIssue(
 	message: string,
 	snapshot: WorkingTreeSnapshot,
 	maxRetries: number = 3,
+	git: GitOps = defaultGitOps,
 ): Promise<[boolean, string]> {
-	stageChanges(snapshot);
+	git.stageChanges(snapshot);
 
 	let output = "";
 	for (let attempt = 0; attempt < maxRetries; attempt++) {
 		const [ok, result] = await verifyAndFix(
 			runner,
-			() => commitChanges(message),
+			() => git.commitChanges(message),
 			(error) =>
 				"The git commit failed with the following output. " +
 				"Fix the issues and stop. Do not commit.\n\n" +
@@ -63,7 +77,7 @@ export async function commitIssue(
 			return [true, output];
 		}
 		// Re-stage after the fix attempt (runner may have changed files)
-		stageChanges(snapshot);
+		git.stageChanges(snapshot);
 	}
 
 	return [false, output];
@@ -85,6 +99,7 @@ export async function runAfkLoop<T extends { number: number }>(
 	runner: Runner,
 	runnerName: string = "claude",
 	onNoChanges?: (issue: T, output: string | undefined) => void,
+	git: GitOps = defaultGitOps,
 ): Promise<IterationResult[]> {
 	console.log(`Runner: ${runnerName}`);
 	console.log("");
@@ -115,12 +130,13 @@ export async function runAfkLoop<T extends { number: number }>(
 		console.log("");
 
 		// Snapshot working tree before runner
-		const snapshot = snapshotWorkingTree();
+		const snapshot = git.snapshotWorkingTree();
 
 		const prompt = await renderPrompt(issue);
 		const runResult = await runner.run(prompt);
 
 		if (!runResult.success) {
+			git.revertUncommitted(snapshot);
 			const errorDetail = runResult.error || "unknown error";
 			console.log(
 				`Issue ${issue.number}: failed — ${errorDetail} ` +
@@ -138,7 +154,7 @@ export async function runAfkLoop<T extends { number: number }>(
 		}
 
 		// Runner succeeded — check for changes
-		const hasChanges = stageChanges(snapshot);
+		const hasChanges = git.stageChanges(snapshot);
 		if (!hasChanges) {
 			const errorMsg = "runner produced no changes";
 			console.log(
@@ -160,14 +176,14 @@ export async function runAfkLoop<T extends { number: number }>(
 
 		// Commit the changes
 		const msg = commitMessage(issue);
-		const [committed] = await commitIssue(runner, msg, snapshot);
+		const [committed] = await commitIssue(runner, msg, snapshot, 3, git);
 
 		if (!committed) {
 			console.log(
 				`Issue ${issue.number}: failed — commit failed after retries ` +
 					`(${fmtTime(runResult.durationSeconds)})`,
 			);
-			revertUncommitted(snapshot);
+			git.revertUncommitted(snapshot);
 			results.push({
 				issueNumber: issue.number,
 				issueFilename: name,

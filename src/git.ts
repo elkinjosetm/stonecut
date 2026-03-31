@@ -7,10 +7,18 @@
 
 import type { WorkingTreeSnapshot } from "./types";
 
-function runSync(cmd: string[]): { exitCode: number; stdout: string; stderr: string } {
+/**
+ * Run a command synchronously, optionally in a specific working directory.
+ * When cwd is omitted, uses the current process working directory.
+ */
+function runSync(
+	cmd: string[],
+	cwd?: string,
+): { exitCode: number; stdout: string; stderr: string } {
 	const proc = Bun.spawnSync(cmd, {
 		stdout: "pipe",
 		stderr: "pipe",
+		...(cwd && { cwd }),
 	});
 	return {
 		exitCode: proc.exitCode,
@@ -20,8 +28,8 @@ function runSync(cmd: string[]): { exitCode: number; stdout: string; stderr: str
 }
 
 /** Detect the remote's default branch, falling back to "main". */
-export function defaultBranch(): string {
-	const result = runSync(["git", "symbolic-ref", "refs/remotes/origin/HEAD"]);
+export function defaultBranch(cwd?: string): string {
+	const result = runSync(["git", "symbolic-ref", "refs/remotes/origin/HEAD"], cwd);
 	if (result.exitCode === 0) {
 		const ref = result.stdout.trim();
 		const prefix = "refs/remotes/origin/";
@@ -36,23 +44,23 @@ export function defaultBranch(): string {
 }
 
 /** Throw if the working tree has uncommitted changes. */
-export function ensureCleanTree(): void {
-	const result = runSync(["git", "status", "--porcelain"]);
+export function ensureCleanTree(cwd?: string): void {
+	const result = runSync(["git", "status", "--porcelain"], cwd);
 	if (result.stdout.trim()) {
 		throw new Error("Working tree has uncommitted changes. Commit or stash them first.");
 	}
 }
 
 /** Check out the branch if it exists locally, otherwise create it. */
-export function checkoutOrCreateBranch(branch: string): void {
-	const verify = runSync(["git", "rev-parse", "--verify", branch]);
+export function checkoutOrCreateBranch(branch: string, cwd?: string): void {
+	const verify = runSync(["git", "rev-parse", "--verify", branch], cwd);
 	if (verify.exitCode === 0) {
-		const checkout = runSync(["git", "checkout", branch]);
+		const checkout = runSync(["git", "checkout", branch], cwd);
 		if (checkout.exitCode !== 0) {
 			throw new Error(`Failed to checkout branch ${branch}: ${checkout.stderr.trim()}`);
 		}
 	} else {
-		const create = runSync(["git", "checkout", "-b", branch]);
+		const create = runSync(["git", "checkout", "-b", branch], cwd);
 		if (create.exitCode !== 0) {
 			throw new Error(`Failed to create branch ${branch}: ${create.stderr.trim()}`);
 		}
@@ -60,8 +68,8 @@ export function checkoutOrCreateBranch(branch: string): void {
 }
 
 /** Push the branch to the remote with upstream tracking. */
-export function pushBranch(branch: string): void {
-	const result = runSync(["git", "push", "-u", "origin", branch]);
+export function pushBranch(branch: string, cwd?: string): void {
+	const result = runSync(["git", "push", "-u", "origin", branch], cwd);
 	if (result.exitCode !== 0) {
 		throw new Error(`Failed to push branch ${branch}: ${result.stderr.trim()}`);
 	}
@@ -90,8 +98,8 @@ export function createPr(title: string, body: string, baseBranch: string): void 
 // ---------------------------------------------------------------------------
 
 /** Capture the current set of untracked files before a runner session. */
-export function snapshotWorkingTree(): WorkingTreeSnapshot {
-	const result = runSync(["git", "status", "--porcelain"]);
+export function snapshotWorkingTree(cwd?: string): WorkingTreeSnapshot {
+	const result = runSync(["git", "status", "--porcelain"], cwd);
 	const untracked = new Set<string>();
 	for (const line of result.stdout.split("\n")) {
 		if (line.startsWith("??")) {
@@ -107,15 +115,15 @@ export function snapshotWorkingTree(): WorkingTreeSnapshot {
  * Stages modified tracked files and new untracked files that were not
  * present in the snapshot. Returns true if anything was staged.
  */
-export function stageChanges(snapshot: WorkingTreeSnapshot): boolean {
+export function stageChanges(snapshot: WorkingTreeSnapshot, cwd?: string): boolean {
 	// Stage all modified tracked files
-	const addU = runSync(["git", "add", "-u"]);
+	const addU = runSync(["git", "add", "-u"], cwd);
 	if (addU.exitCode !== 0) {
 		throw new Error(`Failed to stage tracked changes: ${addU.stderr.trim()}`);
 	}
 
 	// Find new untracked files (not in pre-run snapshot)
-	const status = runSync(["git", "status", "--porcelain"]);
+	const status = runSync(["git", "status", "--porcelain"], cwd);
 	const newFiles: string[] = [];
 	for (const line of status.stdout.split("\n")) {
 		if (line.startsWith("??")) {
@@ -127,14 +135,14 @@ export function stageChanges(snapshot: WorkingTreeSnapshot): boolean {
 	}
 
 	if (newFiles.length > 0) {
-		const addNew = runSync(["git", "add", "--", ...newFiles]);
+		const addNew = runSync(["git", "add", "--", ...newFiles], cwd);
 		if (addNew.exitCode !== 0) {
 			throw new Error(`Failed to stage new files: ${addNew.stderr.trim()}`);
 		}
 	}
 
 	// Check if anything is staged
-	const diff = runSync(["git", "diff", "--cached", "--quiet"]);
+	const diff = runSync(["git", "diff", "--cached", "--quiet"], cwd);
 	return diff.exitCode !== 0;
 }
 
@@ -144,8 +152,8 @@ export function stageChanges(snapshot: WorkingTreeSnapshot): boolean {
  * Returns [success, output]. On failure the output contains the
  * error details (e.g. pre-commit hook output).
  */
-export function commitChanges(message: string): [boolean, string] {
-	const result = runSync(["git", "commit", "-m", message]);
+export function commitChanges(message: string, cwd?: string): [boolean, string] {
+	const result = runSync(["git", "commit", "-m", message], cwd);
 	const output = `${result.stdout}\n${result.stderr}`.trim();
 	return [result.exitCode === 0, output];
 }
@@ -156,12 +164,15 @@ export function commitChanges(message: string): [boolean, string] {
  * Removes new untracked files created during the runner session (those
  * not in the snapshot) and restores modified tracked files.
  */
-export function revertUncommitted(snapshot: WorkingTreeSnapshot): void {
+export function revertUncommitted(snapshot: WorkingTreeSnapshot, cwd?: string): void {
+	// Unstage everything (clear the index back to HEAD)
+	runSync(["git", "reset", "HEAD"], cwd);
+
 	// Restore modified tracked files
-	runSync(["git", "checkout", "."]);
+	runSync(["git", "checkout", "."], cwd);
 
 	// Remove new untracked files (only those created during the session)
-	const status = runSync(["git", "status", "--porcelain"]);
+	const status = runSync(["git", "status", "--porcelain"], cwd);
 	const newFiles: string[] = [];
 	for (const line of status.stdout.split("\n")) {
 		if (line.startsWith("??")) {
@@ -173,6 +184,6 @@ export function revertUncommitted(snapshot: WorkingTreeSnapshot): void {
 	}
 
 	if (newFiles.length > 0) {
-		runSync(["git", "clean", "-fd", "--", ...newFiles]);
+		runSync(["git", "clean", "-fd", "--", ...newFiles], cwd);
 	}
 }
