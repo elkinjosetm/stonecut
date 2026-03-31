@@ -1,14 +1,21 @@
 /**
- * Runner — commit flow and orchestration helpers.
+ * Runner — commit flow, orchestration loop, and session helpers.
  *
  * verifyAndFix: single check → fix cycle.
  * commitIssue: stage, commit, retry on failure up to maxRetries times.
+ * runAfkLoop: main orchestration loop over issues from any source.
+ * fmtTime / printSummary: session output formatting.
  *
  * Modules throw on failure. No process.exit, no console output.
  */
 
-import { commitChanges, stageChanges } from "./git";
-import type { Runner, WorkingTreeSnapshot } from "./types";
+import {
+  commitChanges,
+  revertUncommitted,
+  snapshotWorkingTree,
+  stageChanges,
+} from "./git";
+import type { IterationResult, Runner, Source, WorkingTreeSnapshot } from "./types";
 
 /**
  * Single check → fix cycle.
@@ -65,4 +72,177 @@ export async function commitIssue(
   }
 
   return [false, output];
+}
+
+/**
+ * Run the autonomous loop over issues from any source.
+ *
+ * Uses the provided Runner instance to execute each issue's prompt.
+ * After each successful run, Forge stages and commits the changes.
+ * Works with both LocalSource and GitHubSource.
+ */
+export async function runAfkLoop<T extends { number: number }>(
+  source: Source<T>,
+  iterations: number | "all",
+  renderPrompt: (issue: T) => string,
+  displayName: (issue: T) => string,
+  commitMessage: (issue: T) => string,
+  runner: Runner,
+  runnerName: string = "claude",
+  onNoChanges?: (issue: T, output: string | undefined) => void,
+): Promise<IterationResult[]> {
+  console.log(`Runner: ${runnerName}`);
+  console.log("");
+  const results: IterationResult[] = [];
+  const sessionStart = performance.now();
+  let iteration = 0;
+
+  while (true) {
+    // Check iteration limit
+    if (typeof iterations === "number" && iteration >= iterations) {
+      break;
+    }
+
+    const issue = await source.getNextIssue();
+    if (issue === null) {
+      if (iteration === 0) {
+        console.log("All issues complete!");
+      }
+      break;
+    }
+
+    iteration++;
+    const name = displayName(issue);
+    const [remaining, total] = await source.getRemainingCount();
+    console.log(`--- Iteration ${iteration} ---`);
+    console.log(`Issue ${issue.number}: ${name}`);
+    console.log(`Remaining: ${remaining}/${total}`);
+    console.log("");
+
+    // Snapshot working tree before runner
+    const snapshot = snapshotWorkingTree();
+
+    const prompt = renderPrompt(issue);
+    const runResult = await runner.run(prompt);
+
+    if (!runResult.success) {
+      const errorDetail = runResult.error || "unknown error";
+      console.log(
+        `Issue ${issue.number}: failed — ${errorDetail} ` +
+          `(${fmtTime(runResult.durationSeconds)})`,
+      );
+      results.push({
+        issueNumber: issue.number,
+        issueFilename: name,
+        success: false,
+        elapsedSeconds: runResult.durationSeconds,
+        error: runResult.error,
+      });
+      console.log("");
+      continue;
+    }
+
+    // Runner succeeded — check for changes
+    const hasChanges = stageChanges(snapshot);
+    if (!hasChanges) {
+      const errorMsg = "runner produced no changes";
+      console.log(
+        `Issue ${issue.number}: failed — ${errorMsg} ` +
+          `(${fmtTime(runResult.durationSeconds)})`,
+      );
+      if (onNoChanges) {
+        onNoChanges(issue, runResult.output);
+      }
+      results.push({
+        issueNumber: issue.number,
+        issueFilename: name,
+        success: false,
+        elapsedSeconds: runResult.durationSeconds,
+        error: errorMsg,
+      });
+      console.log("");
+      continue;
+    }
+
+    // Commit the changes
+    const msg = commitMessage(issue);
+    const [committed] = await commitIssue(runner, msg, snapshot);
+
+    if (!committed) {
+      console.log(
+        `Issue ${issue.number}: failed — commit failed after retries ` +
+          `(${fmtTime(runResult.durationSeconds)})`,
+      );
+      revertUncommitted(snapshot);
+      results.push({
+        issueNumber: issue.number,
+        issueFilename: name,
+        success: false,
+        elapsedSeconds: runResult.durationSeconds,
+        error: "commit failed after retries",
+      });
+      // Stop the entire session
+      console.log("Stopping session: unable to commit.");
+      console.log("");
+      break;
+    }
+
+    // Commit succeeded — mark issue complete
+    await source.completeIssue(issue);
+    console.log(
+      `Issue ${issue.number}: completed ` +
+        `(${fmtTime(runResult.durationSeconds)})`,
+    );
+    results.push({
+      issueNumber: issue.number,
+      issueFilename: name,
+      success: true,
+      elapsedSeconds: runResult.durationSeconds,
+    });
+
+    console.log("");
+  }
+
+  // Session summary
+  const totalElapsed = (performance.now() - sessionStart) / 1000;
+  printSummary(results, totalElapsed);
+  return results;
+}
+
+/** Format seconds as a human-readable duration. */
+export function fmtTime(seconds: number): string {
+  if (seconds < 60) {
+    return `${Math.round(seconds)}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${minutes}m ${secs}s`;
+}
+
+/** Print a summary of the afk session. */
+export function printSummary(
+  results: IterationResult[],
+  totalSeconds: number,
+): void {
+  if (results.length === 0) {
+    return;
+  }
+
+  console.log("=== Session Summary ===");
+  const succeeded = results.filter((r) => r.success).length;
+  const failed = results.filter((r) => !r.success).length;
+
+  for (const r of results) {
+    const status = r.success ? "completed" : "failed";
+    const elapsed = fmtTime(r.elapsedSeconds);
+    console.log(
+      `  Issue ${r.issueNumber} (${r.issueFilename}): ${status} (${elapsed})`,
+    );
+  }
+
+  console.log("");
+  console.log(
+    `Total: ${results.length} issues — ${succeeded} completed, ${failed} failed`,
+  );
+  console.log(`Total time: ${fmtTime(totalSeconds)}`);
 }
