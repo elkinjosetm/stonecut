@@ -17,7 +17,11 @@
     "commander": "^13.1.0"
   },
   "lint-staged": {
-    "*.{ts,json,md}": "prettier --check"
+    "*.ts": [
+      "eslint",
+      "prettier --check"
+    ],
+    "*.{json,md}": "prettier --check"
   },
   "devDependencies": {
     "@types/bun": "^1.2.9",

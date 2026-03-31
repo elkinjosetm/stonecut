@@ -188,7 +188,7 @@ describe("commitIssue", () => {
 			commitChanges: () => [false, "error"],
 		});
 
-		const [ok, _output] = await commitIssue(runner, "msg", snapshot, 1, git);
+		const [ok] = await commitIssue(runner, "msg", snapshot, 1, git);
 
 		expect(ok).toBe(false);
 		// Only 1 retry, so 1 runner fix call

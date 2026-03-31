@@ -75,7 +75,7 @@ function makeSource(): GitHubSource {
 
 describe("gh CLI validation", () => {
 	test("error when gh not installed", () => {
-		(Bun as any).spawnSync = () => {
+		(Bun as unknown as Record<string, unknown>).spawnSync = () => {
 			throw new Error("spawn failed");
 		};
 		expect(() => GitHubSource.validateGhCli()).toThrow("gh CLI is not installed");
