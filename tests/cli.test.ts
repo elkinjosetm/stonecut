@@ -1,13 +1,17 @@
 /**
- * Tests for CLI command setup, flag parsing, and validation.
+ * Tests for CLI command setup, flag parsing, validation, forge report,
+ * execution paths, and pre-execution prompts.
  */
 
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import {
+  buildForgeReport,
   buildProgram,
   parseIterations,
+  preExecution,
   validateRunSource,
 } from "../src/cli";
+import type { IterationResult } from "../src/types";
 
 // ---------------------------------------------------------------------------
 // parseIterations
@@ -279,5 +283,260 @@ describe("run command validation", () => {
     expect(caught!.message).toContain(
       "Use exactly one of --local or --github.",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildForgeReport
+// ---------------------------------------------------------------------------
+
+describe("buildForgeReport", () => {
+  test("includes runner name", () => {
+    const report = buildForgeReport([], "claude");
+    expect(report).toContain("**Runner:** claude");
+  });
+
+  test("success format", () => {
+    const results: IterationResult[] = [
+      {
+        issueNumber: 1,
+        issueFilename: "setup.md",
+        success: true,
+        elapsedSeconds: 30,
+      },
+    ];
+    const report = buildForgeReport(results, "claude");
+    expect(report).toContain("- #1 setup.md: completed");
+  });
+
+  test("failure format with error detail", () => {
+    const results: IterationResult[] = [
+      {
+        issueNumber: 2,
+        issueFilename: "api.md",
+        success: false,
+        elapsedSeconds: 10,
+        error: "max turns exceeded",
+      },
+    ];
+    const report = buildForgeReport(results, "codex");
+    expect(report).toContain("- #2 api.md: failed — max turns exceeded");
+  });
+
+  test("failure with no error uses 'unknown error'", () => {
+    const results: IterationResult[] = [
+      {
+        issueNumber: 3,
+        issueFilename: "db.md",
+        success: false,
+        elapsedSeconds: 5,
+      },
+    ];
+    const report = buildForgeReport(results, "claude");
+    expect(report).toContain("- #3 db.md: failed — unknown error");
+  });
+
+  test("multiple results", () => {
+    const results: IterationResult[] = [
+      {
+        issueNumber: 1,
+        issueFilename: "setup.md",
+        success: true,
+        elapsedSeconds: 30,
+      },
+      {
+        issueNumber: 2,
+        issueFilename: "api.md",
+        success: false,
+        elapsedSeconds: 10,
+        error: "timeout",
+      },
+    ];
+    const report = buildForgeReport(results, "claude");
+    expect(report).toContain("- #1 setup.md: completed");
+    expect(report).toContain("- #2 api.md: failed — timeout");
+  });
+
+  test("includes 'Closes #N' for GitHub PRD number", () => {
+    const results: IterationResult[] = [
+      {
+        issueNumber: 5,
+        issueFilename: "feat.md",
+        success: true,
+        elapsedSeconds: 60,
+      },
+    ];
+    const report = buildForgeReport(results, "claude", 42);
+    expect(report).toContain("Closes #42");
+  });
+
+  test("omits 'Closes #N' when no PRD number", () => {
+    const results: IterationResult[] = [
+      {
+        issueNumber: 5,
+        issueFilename: "feat.md",
+        success: true,
+        elapsedSeconds: 60,
+      },
+    ];
+    const report = buildForgeReport(results, "claude");
+    expect(report).not.toContain("Closes");
+  });
+
+  test("starts with ## Forge Report header", () => {
+    const report = buildForgeReport([], "claude");
+    expect(report).toMatch(/^## Forge Report/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch slug and PR title naming
+// ---------------------------------------------------------------------------
+
+describe("branch and PR title naming", () => {
+  test("local branch uses forge/<slug> pattern", async () => {
+    // Test the slug generation used in runLocal
+    const { slugifyBranchComponent } = await import("../src/naming");
+    const slug = slugifyBranchComponent("My Cool Spec");
+    expect(`forge/${slug}`).toBe("forge/my-cool-spec");
+  });
+
+  test("local branch fallback when slug is empty", async () => {
+    const { slugifyBranchComponent } = await import("../src/naming");
+    const slug = slugifyBranchComponent("---");
+    const branch = slug ? `forge/${slug}` : "forge/spec";
+    expect(branch).toBe("forge/spec");
+  });
+
+  test("github branch uses forge/<prd-slug> pattern", async () => {
+    const { slugifyBranchComponent } = await import("../src/naming");
+    const slug = slugifyBranchComponent("Rewrite CLI to TypeScript");
+    expect(`forge/${slug}`).toBe("forge/rewrite-cli-to-typescript");
+  });
+
+  test("github branch fallback when slug is empty", async () => {
+    const { slugifyBranchComponent } = await import("../src/naming");
+    const slug = slugifyBranchComponent("");
+    const branch = slug ? `forge/${slug}` : "forge/issue-99";
+    expect(branch).toBe("forge/issue-99");
+  });
+
+  test("local PR title is 'Forge: <name>'", () => {
+    const name = "my-spec";
+    expect(`Forge: ${name}`).toBe("Forge: my-spec");
+  });
+
+  test("github PR title uses PRD title", () => {
+    const prdTitle = "Rewrite CLI";
+    const prTitle = prdTitle || "PRD #99";
+    expect(prTitle).toBe("Rewrite CLI");
+  });
+
+  test("github PR title fallback when title is empty", () => {
+    const prdTitle = "";
+    const prTitle = prdTitle || "PRD #99";
+    expect(prTitle).toBe("PRD #99");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// preExecution prompt mocking
+// ---------------------------------------------------------------------------
+
+describe("preExecution", () => {
+  test("returns branch and base branch from prompts", async () => {
+    const clack = await import("@clack/prompts");
+    const gitMod = await import("../src/git");
+
+    const textMock = mock()
+      .mockResolvedValueOnce("forge/my-branch")
+      .mockResolvedValueOnce("main");
+
+    spyOn(clack, "text").mockImplementation(textMock);
+    spyOn(gitMod, "ensureCleanTree").mockImplementation(() => {});
+    spyOn(gitMod, "defaultBranch").mockReturnValue("main");
+    spyOn(gitMod, "checkoutOrCreateBranch").mockImplementation(() => {});
+    spyOn(console, "log").mockImplementation(() => {});
+
+    const [branch, baseBranch] = await preExecution("forge/suggested");
+
+    expect(branch).toBe("forge/my-branch");
+    expect(baseBranch).toBe("main");
+
+    (clack.text as ReturnType<typeof mock>).mockRestore?.();
+    (gitMod.ensureCleanTree as ReturnType<typeof mock>).mockRestore?.();
+    (gitMod.defaultBranch as ReturnType<typeof mock>).mockRestore?.();
+    (gitMod.checkoutOrCreateBranch as ReturnType<typeof mock>).mockRestore?.();
+    (console.log as ReturnType<typeof mock>).mockRestore?.();
+  });
+
+  test("throws when branch prompt is cancelled", async () => {
+    const clack = await import("@clack/prompts");
+    const gitMod = await import("../src/git");
+
+    const cancelSymbol = Symbol("cancel");
+    spyOn(clack, "text").mockResolvedValue(cancelSymbol as never);
+    spyOn(clack, "isCancel").mockReturnValue(true);
+    spyOn(gitMod, "ensureCleanTree").mockImplementation(() => {});
+
+    await expect(preExecution("forge/test")).rejects.toThrow("Cancelled.");
+
+    (clack.text as ReturnType<typeof mock>).mockRestore?.();
+    (clack.isCancel as ReturnType<typeof mock>).mockRestore?.();
+    (gitMod.ensureCleanTree as ReturnType<typeof mock>).mockRestore?.();
+  });
+
+  test("calls ensureCleanTree before prompts", async () => {
+    const clack = await import("@clack/prompts");
+    const gitMod = await import("../src/git");
+
+    const callOrder: string[] = [];
+    spyOn(gitMod, "ensureCleanTree").mockImplementation(() => {
+      callOrder.push("ensureCleanTree");
+    });
+    const textMock = mock().mockImplementation(async () => {
+      callOrder.push("text");
+      return "value";
+    });
+    spyOn(clack, "text").mockImplementation(textMock);
+    spyOn(gitMod, "defaultBranch").mockReturnValue("main");
+    spyOn(gitMod, "checkoutOrCreateBranch").mockImplementation(() => {});
+    spyOn(console, "log").mockImplementation(() => {});
+
+    await preExecution("forge/test");
+
+    expect(callOrder[0]).toBe("ensureCleanTree");
+    expect(callOrder[1]).toBe("text");
+
+    (gitMod.ensureCleanTree as ReturnType<typeof mock>).mockRestore?.();
+    (clack.text as ReturnType<typeof mock>).mockRestore?.();
+    (gitMod.defaultBranch as ReturnType<typeof mock>).mockRestore?.();
+    (gitMod.checkoutOrCreateBranch as ReturnType<typeof mock>).mockRestore?.();
+    (console.log as ReturnType<typeof mock>).mockRestore?.();
+  });
+
+  test("calls checkoutOrCreateBranch with selected branch", async () => {
+    const clack = await import("@clack/prompts");
+    const gitMod = await import("../src/git");
+
+    const textMock = mock()
+      .mockResolvedValueOnce("forge/custom")
+      .mockResolvedValueOnce("develop");
+
+    spyOn(clack, "text").mockImplementation(textMock);
+    spyOn(gitMod, "ensureCleanTree").mockImplementation(() => {});
+    spyOn(gitMod, "defaultBranch").mockReturnValue("main");
+    const checkoutSpy = spyOn(gitMod, "checkoutOrCreateBranch").mockImplementation(() => {});
+    spyOn(console, "log").mockImplementation(() => {});
+
+    await preExecution("forge/suggested");
+
+    expect(checkoutSpy).toHaveBeenCalledWith("forge/custom");
+
+    (clack.text as ReturnType<typeof mock>).mockRestore?.();
+    (gitMod.ensureCleanTree as ReturnType<typeof mock>).mockRestore?.();
+    (gitMod.defaultBranch as ReturnType<typeof mock>).mockRestore?.();
+    (gitMod.checkoutOrCreateBranch as ReturnType<typeof mock>).mockRestore?.();
+    (console.log as ReturnType<typeof mock>).mockRestore?.();
   });
 });

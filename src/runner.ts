@@ -84,7 +84,7 @@ export async function commitIssue(
 export async function runAfkLoop<T extends { number: number }>(
   source: Source<T>,
   iterations: number | "all",
-  renderPrompt: (issue: T) => string,
+  renderPrompt: (issue: T) => string | Promise<string>,
   displayName: (issue: T) => string,
   commitMessage: (issue: T) => string,
   runner: Runner,
@@ -122,7 +122,7 @@ export async function runAfkLoop<T extends { number: number }>(
     // Snapshot working tree before runner
     const snapshot = snapshotWorkingTree();
 
-    const prompt = renderPrompt(issue);
+    const prompt = await renderPrompt(issue);
     const runResult = await runner.run(prompt);
 
     if (!runResult.success) {
