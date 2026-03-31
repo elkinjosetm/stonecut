@@ -9,9 +9,10 @@ import {
 	buildProgram,
 	parseIterations,
 	preExecution,
+	pushAndMaybePr,
 	validateRunSource,
 } from "../src/cli";
-import type { IterationResult } from "../src/types";
+import type { IterationResult, LogWriter } from "../src/types";
 
 // ---------------------------------------------------------------------------
 // parseIterations
@@ -388,6 +389,131 @@ describe("branch and PR title naming", () => {
 		const prdTitle = "";
 		const prTitle = prdTitle || "PRD #99";
 		expect(prTitle).toBe("PRD #99");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// pushAndMaybePr (Bug #104: PR gating)
+// ---------------------------------------------------------------------------
+
+describe("pushAndMaybePr", () => {
+	class FakeLogger implements LogWriter {
+		messages: string[] = [];
+		log(message: string): void {
+			this.messages.push(message);
+		}
+		close(): void {}
+	}
+
+	function fakeSource(remaining: number, total: number) {
+		return {
+			async getRemainingCount(): Promise<[number, number]> {
+				return [remaining, total];
+			},
+		};
+	}
+
+	test("does nothing when no results succeeded", async () => {
+		const gitMod = await import("../src/git");
+		const pushSpy = spyOn(gitMod, "pushBranch").mockImplementation(() => {});
+		const prSpy = spyOn(gitMod, "createPr").mockImplementation(() => {});
+		const logger = new FakeLogger();
+
+		const results: IterationResult[] = [
+			{
+				issueNumber: 1,
+				issueFilename: "task.md",
+				success: false,
+				elapsedSeconds: 10,
+				error: "crash",
+			},
+		];
+
+		await pushAndMaybePr(results, fakeSource(1, 1), "forge/test", "main", "Test", "claude", logger);
+
+		expect(pushSpy).not.toHaveBeenCalled();
+		expect(prSpy).not.toHaveBeenCalled();
+
+		pushSpy.mockRestore();
+		prSpy.mockRestore();
+	});
+
+	test("pushes branch but defers PR when issues remain", async () => {
+		const gitMod = await import("../src/git");
+		const pushSpy = spyOn(gitMod, "pushBranch").mockImplementation(() => {});
+		const prSpy = spyOn(gitMod, "createPr").mockImplementation(() => {});
+		const logger = new FakeLogger();
+
+		const results: IterationResult[] = [
+			{ issueNumber: 1, issueFilename: "task.md", success: true, elapsedSeconds: 30 },
+		];
+
+		await pushAndMaybePr(
+			results,
+			fakeSource(5, 10),
+			"forge/test",
+			"main",
+			"Test",
+			"claude",
+			logger,
+		);
+
+		expect(pushSpy).toHaveBeenCalledWith("forge/test");
+		expect(prSpy).not.toHaveBeenCalled();
+		expect(logger.messages.join("\n")).toContain("5/10 issues remaining — PR deferred.");
+
+		pushSpy.mockRestore();
+		prSpy.mockRestore();
+	});
+
+	test("pushes and creates PR when all issues complete", async () => {
+		const gitMod = await import("../src/git");
+		const pushSpy = spyOn(gitMod, "pushBranch").mockImplementation(() => {});
+		const prSpy = spyOn(gitMod, "createPr").mockImplementation(() => {});
+		const logger = new FakeLogger();
+
+		const results: IterationResult[] = [
+			{ issueNumber: 1, issueFilename: "task.md", success: true, elapsedSeconds: 30 },
+		];
+
+		await pushAndMaybePr(results, fakeSource(0, 1), "forge/test", "main", "Test", "claude", logger);
+
+		expect(pushSpy).toHaveBeenCalledWith("forge/test");
+		expect(prSpy).toHaveBeenCalled();
+		expect(logger.messages.join("\n")).toContain("Created PR.");
+
+		pushSpy.mockRestore();
+		prSpy.mockRestore();
+	});
+
+	test("includes Closes #N in PR body for GitHub PRD", async () => {
+		const gitMod = await import("../src/git");
+		const pushSpy = spyOn(gitMod, "pushBranch").mockImplementation(() => {});
+		let capturedBody = "";
+		const prSpy = spyOn(gitMod, "createPr").mockImplementation((_title, body) => {
+			capturedBody = body;
+		});
+		const logger = new FakeLogger();
+
+		const results: IterationResult[] = [
+			{ issueNumber: 5, issueFilename: "feat.md", success: true, elapsedSeconds: 60 },
+		];
+
+		await pushAndMaybePr(
+			results,
+			fakeSource(0, 1),
+			"forge/test",
+			"main",
+			"Test",
+			"claude",
+			logger,
+			42,
+		);
+
+		expect(capturedBody).toContain("Closes #42");
+
+		pushSpy.mockRestore();
+		prSpy.mockRestore();
 	});
 });
 

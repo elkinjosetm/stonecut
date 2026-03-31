@@ -21,10 +21,11 @@ import { GitHubSource } from "./github";
 import { LocalSource } from "./local";
 import { slugifyBranchComponent } from "./naming";
 import { renderGithub, renderLocal } from "./prompt";
-import { runAfkLoop } from "./runner";
+import { Logger } from "./logger";
+import { defaultGitOps, runAfkLoop } from "./runner";
 import { getRunner } from "./runners/index";
 import { setupSkills, removeSkills } from "./skills";
-import type { GitHubIssue, Issue, IterationResult } from "./types";
+import type { GitHubIssue, Issue, IterationResult, Session } from "./types";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json");
@@ -162,20 +163,34 @@ export async function preExecution(suggestedBranch: string): Promise<[string, st
 }
 
 // ---------------------------------------------------------------------------
-// Push and create PR
+// Post-loop: push and conditionally create PR
 // ---------------------------------------------------------------------------
 
-function pushAndCreatePr(
+export async function pushAndMaybePr(
 	results: IterationResult[],
+	source: { getRemainingCount(): Promise<[number, number]> },
 	branch: string,
 	baseBranch: string,
 	prTitle: string,
 	runnerName: string,
+	logger: { log(message: string): void },
 	prdNumber?: number,
-): void {
+): Promise<void> {
+	if (!results.some((r) => r.success)) {
+		return;
+	}
+
 	pushBranch(branch);
-	const body = buildForgeReport(results, runnerName, prdNumber);
-	createPr(prTitle, body, baseBranch);
+	logger.log(`Pushed branch '${branch}'.`);
+
+	const [remaining, total] = await source.getRemainingCount();
+	if (remaining === 0) {
+		const body = buildForgeReport(results, runnerName, prdNumber);
+		createPr(prTitle, body, baseBranch);
+		logger.log("Created PR.");
+	} else {
+		logger.log(`${remaining}/${total} issues remaining — PR deferred.`);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -189,30 +204,34 @@ export async function runLocal(
 ): Promise<void> {
 	const runner = getRunner(runnerName);
 	const source = new LocalSource(name);
+	const prdIdentifier = slugifyBranchComponent(name) || "spec";
+	const logger = new Logger(prdIdentifier);
 
-	const localSlug = slugifyBranchComponent(name);
-	const suggestedBranch = localSlug ? `forge/${localSlug}` : "forge/spec";
-	const [branch, baseBranch] = await preExecution(suggestedBranch);
+	const session: Session = { logger, git: defaultGitOps, runner, runnerName };
 
-	const prdContent = await source.getPrdContent();
-	const results = await runAfkLoop<Issue>(
-		source,
-		iterations,
-		(issue) =>
-			renderLocal({
-				prdContent,
-				issueNumber: issue.number,
-				issueFilename: issue.filename,
-				issueContent: issue.content,
-			}),
-		(issue) => issue.filename,
-		(issue) => `Issue ${issue.number}: ${issue.filename}`,
-		runner,
-		runnerName,
-	);
+	try {
+		const suggestedBranch = prdIdentifier ? `forge/${prdIdentifier}` : "forge/spec";
+		const [branch, baseBranch] = await preExecution(suggestedBranch);
 
-	if (results.some((r) => r.success)) {
-		pushAndCreatePr(results, branch, baseBranch, `Forge: ${name}`, runnerName);
+		const prdContent = await source.getPrdContent();
+		const results = await runAfkLoop<Issue>(
+			source,
+			iterations,
+			(issue) =>
+				renderLocal({
+					prdContent,
+					issueNumber: issue.number,
+					issueFilename: issue.filename,
+					issueContent: issue.content,
+				}),
+			(issue) => issue.filename,
+			(issue) => `Issue ${issue.number}: ${issue.filename}`,
+			session,
+		);
+
+		await pushAndMaybePr(results, source, branch, baseBranch, `Forge: ${name}`, runnerName, logger);
+	} finally {
+		logger.close();
 	}
 }
 
@@ -223,33 +242,37 @@ export async function runGitHub(
 ): Promise<void> {
 	const runner = getRunner(runnerName);
 	const source = new GitHubSource(number);
+	const logger = new Logger(`prd-${number}`);
 
-	const prd = source.getPrd();
-	const prdSlug = slugifyBranchComponent(prd.title);
-	const suggestedBranch = prdSlug ? `forge/${prdSlug}` : `forge/issue-${number}`;
-	const prTitle = prd.title || `PRD #${number}`;
-	const [branch, baseBranch] = await preExecution(suggestedBranch);
+	const session: Session = { logger, git: defaultGitOps, runner, runnerName };
 
-	const prdContent = prd.body;
-	const results = await runAfkLoop<GitHubIssue>(
-		source,
-		iterations,
-		(issue) =>
-			renderGithub({
-				prdContent,
-				issueNumber: issue.number,
-				issueTitle: issue.title,
-				issueContent: issue.body,
-			}),
-		(issue) => issue.title,
-		(issue) => `Issue #${issue.number}: ${issue.title}`,
-		runner,
-		runnerName,
-		(issue, output) => commentOnIssue(issue.number, output),
-	);
+	try {
+		const prd = source.getPrd();
+		const prdSlug = slugifyBranchComponent(prd.title);
+		const suggestedBranch = prdSlug ? `forge/${prdSlug}` : `forge/issue-${number}`;
+		const prTitle = prd.title || `PRD #${number}`;
+		const [branch, baseBranch] = await preExecution(suggestedBranch);
 
-	if (results.some((r) => r.success)) {
-		pushAndCreatePr(results, branch, baseBranch, prTitle, runnerName, number);
+		const prdContent = prd.body;
+		const results = await runAfkLoop<GitHubIssue>(
+			source,
+			iterations,
+			(issue) =>
+				renderGithub({
+					prdContent,
+					issueNumber: issue.number,
+					issueTitle: issue.title,
+					issueContent: issue.body,
+				}),
+			(issue) => issue.title,
+			(issue) => `Issue #${issue.number}: ${issue.title}`,
+			session,
+			(issue, output) => commentOnIssue(issue.number, output),
+		);
+
+		await pushAndMaybePr(results, source, branch, baseBranch, prTitle, runnerName, logger, number);
+	} finally {
+		logger.close();
 	}
 }
 
