@@ -11,7 +11,7 @@ let tmpDir: string;
 let origCwd: string;
 
 function createSpecDir(base: string, name: string): string {
-	const specDir = join(base, ".forge", name);
+	const specDir = join(base, ".stonecut", name);
 	const issuesDir = join(specDir, "issues");
 	mkdirSync(issuesDir, { recursive: true });
 	writeFileSync(join(specDir, "prd.md"), "# My PRD\nSome requirements.\n");
@@ -25,7 +25,7 @@ function createSpecDir(base: string, name: string): string {
 
 describe("Validation", () => {
 	beforeEach(() => {
-		tmpDir = mkdtempSync(join(tmpdir(), "forge-test-"));
+		tmpDir = mkdtempSync(join(tmpdir(), "stonecut-test-"));
 		origCwd = process.cwd();
 		process.chdir(tmpDir);
 	});
@@ -39,13 +39,13 @@ describe("Validation", () => {
 	});
 
 	test("error when prd.md missing", () => {
-		const base = join(tmpDir, ".forge", "bad");
+		const base = join(tmpDir, ".stonecut", "bad");
 		mkdirSync(join(base, "issues"), { recursive: true });
 		expect(() => new LocalSource("bad")).toThrow("prd.md not found");
 	});
 
 	test("error when issues dir missing", () => {
-		const base = join(tmpDir, ".forge", "bad");
+		const base = join(tmpDir, ".stonecut", "bad");
 		mkdirSync(base, { recursive: true });
 		writeFileSync(join(base, "prd.md"), "# PRD\n");
 		expect(() => new LocalSource("bad")).toThrow("issues/ not found");
@@ -58,7 +58,7 @@ describe("Issue discovery", () => {
 	let specDir: string;
 
 	beforeEach(() => {
-		tmpDir = mkdtempSync(join(tmpdir(), "forge-test-"));
+		tmpDir = mkdtempSync(join(tmpdir(), "stonecut-test-"));
 		origCwd = process.cwd();
 		process.chdir(tmpDir);
 		specDir = createSpecDir(tmpDir, "myspec");
@@ -91,11 +91,11 @@ describe("Issue discovery", () => {
 	});
 
 	test("handles empty issues directory", () => {
-		const emptyTmp = mkdtempSync(join(tmpdir(), "forge-test-"));
+		const emptyTmp = mkdtempSync(join(tmpdir(), "stonecut-test-"));
 		const prevCwd = process.cwd();
 		process.chdir(emptyTmp);
 		try {
-			const base = join(emptyTmp, ".forge", "empty");
+			const base = join(emptyTmp, ".stonecut", "empty");
 			mkdirSync(join(base, "issues"), { recursive: true });
 			writeFileSync(join(base, "prd.md"), "# PRD\n");
 			const source = new LocalSource("empty");
@@ -112,7 +112,7 @@ describe("Status initialization", () => {
 	let specDir: string;
 
 	beforeEach(() => {
-		tmpDir = mkdtempSync(join(tmpdir(), "forge-test-"));
+		tmpDir = mkdtempSync(join(tmpdir(), "stonecut-test-"));
 		origCwd = process.cwd();
 		process.chdir(tmpDir);
 		specDir = createSpecDir(tmpDir, "myspec");
@@ -139,7 +139,7 @@ describe("Issue completion", () => {
 	let specDir: string;
 
 	beforeEach(() => {
-		tmpDir = mkdtempSync(join(tmpdir(), "forge-test-"));
+		tmpDir = mkdtempSync(join(tmpdir(), "stonecut-test-"));
 		origCwd = process.cwd();
 		process.chdir(tmpDir);
 		specDir = createSpecDir(tmpDir, "myspec");
@@ -173,7 +173,7 @@ describe("Issue completion", () => {
 
 describe("Content reading", () => {
 	beforeEach(() => {
-		tmpDir = mkdtempSync(join(tmpdir(), "forge-test-"));
+		tmpDir = mkdtempSync(join(tmpdir(), "stonecut-test-"));
 		origCwd = process.cwd();
 		process.chdir(tmpDir);
 		createSpecDir(tmpDir, "myspec");
@@ -204,7 +204,7 @@ describe("Remaining count", () => {
 	let specDir: string;
 
 	beforeEach(() => {
-		tmpDir = mkdtempSync(join(tmpdir(), "forge-test-"));
+		tmpDir = mkdtempSync(join(tmpdir(), "stonecut-test-"));
 		origCwd = process.cwd();
 		process.chdir(tmpDir);
 		specDir = createSpecDir(tmpDir, "myspec");

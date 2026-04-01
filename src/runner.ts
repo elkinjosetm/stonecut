@@ -101,7 +101,7 @@ export async function commitIssue(
  * Run the autonomous loop over issues from any source.
  *
  * Uses the provided Session to execute each issue's prompt.
- * After each successful run, Forge stages and commits the changes.
+ * After each successful run, Stonecut stages and commits the changes.
  * Works with both LocalSource and GitHubSource.
  *
  * A failing issue is retried once (2 total attempts). If it fails

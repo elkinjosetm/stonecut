@@ -7,7 +7,7 @@ import { existsSync, readFileSync, rmSync } from "fs";
 import { join } from "path";
 import { Logger } from "../src/logger";
 
-const TEST_LOG_DIR = join(".forge", "logs");
+const TEST_LOG_DIR = join(".stonecut", "logs");
 
 afterEach(() => {
 	// Clean up test log files
@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 describe("Logger", () => {
-	test("creates .forge/logs/ directory", () => {
+	test("creates .stonecut/logs/ directory", () => {
 		const logger = new Logger("test-spec");
 		expect(existsSync(TEST_LOG_DIR)).toBe(true);
 		logger.close();
@@ -25,7 +25,7 @@ describe("Logger", () => {
 
 	test("log file name matches <identifier>-<timestamp>.log pattern", () => {
 		const logger = new Logger("test-spec");
-		expect(logger.filePath).toMatch(/\.forge\/logs\/test-spec-\d{4}-\d{2}-\d{2}T.*\.log$/);
+		expect(logger.filePath).toMatch(/\.stonecut\/logs\/test-spec-\d{4}-\d{2}-\d{2}T.*\.log$/);
 		logger.close();
 	});
 
@@ -65,7 +65,7 @@ describe("Logger", () => {
 
 	test("handles GitHub PRD identifier", () => {
 		const logger = new Logger("prd-87");
-		expect(logger.filePath).toMatch(/\.forge\/logs\/prd-87-\d{4}-\d{2}-\d{2}T.*\.log$/);
+		expect(logger.filePath).toMatch(/\.stonecut\/logs\/prd-87-\d{4}-\d{2}-\d{2}T.*\.log$/);
 		logger.close();
 	});
 

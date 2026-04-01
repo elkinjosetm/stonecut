@@ -1,4 +1,4 @@
-/** Local spec source — reads issues from .forge/<name>/. */
+/** Local spec source — reads issues from .stonecut/<name>/. */
 
 import { existsSync, readdirSync, readFileSync, writeFileSync, appendFileSync, statSync } from "fs";
 import { join } from "path";
@@ -10,7 +10,7 @@ export class LocalSource implements Source<Issue> {
 
 	constructor(name: string) {
 		this.name = name;
-		this.specDir = join(".forge", name);
+		this.specDir = join(".stonecut", name);
 		this.validate();
 	}
 

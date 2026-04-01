@@ -1,11 +1,11 @@
 {
-  "name": "prd-forge",
+  "name": "stonecut",
   "version": "1.0.0",
   "description": "CLI that drives PRD-driven development with agentic coding CLIs",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/elkinjosetm/prd-forge.git"
+    "url": "https://github.com/elkinjosetm/stonecut.git"
   },
   "keywords": [
     "cli",
@@ -21,7 +21,7 @@
     "README.md"
   ],
   "bin": {
-    "forge": "./src/cli.ts"
+    "stonecut": "./src/cli.ts"
   },
   "scripts": {
     "lint": "eslint src/ tests/",
