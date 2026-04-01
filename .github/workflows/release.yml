@@ -13,20 +13,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
+      - uses: oven-sh/setup-bun@v2
 
-      - name: Get version from pyproject.toml
+      - name: Get version from package.json
         id: version
         run: |
-          VERSION=$(python -c "
-          import re
-          with open('pyproject.toml') as f:
-              content = f.read()
-          match = re.search(r'^version\s*=\s*\"([^\"]+)\"', content, re.MULTILINE)
-          print(match.group(1))
-          ")
+          VERSION=$(bun -e "const p = await Bun.file('package.json').json(); console.log(p.version)")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 

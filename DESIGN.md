@@ -19,10 +19,10 @@ forge run --github <number> -i <N|all> [--runner <name>]
 
 ### Flags
 
-| Flag | Alias | Required | Description |
-|------|-------|----------|-------------|
-| `--iterations` | `-i` | Always | Number of issues to process, or `all` |
-| `--runner` | — | No | Agentic CLI runner to use (default: `claude`) |
+| Flag           | Alias | Required | Description                                   |
+| -------------- | ----- | -------- | --------------------------------------------- |
+| `--iterations` | `-i`  | Always   | Number of issues to process, or `all`         |
+| `--runner`     | —     | No       | Agentic CLI runner to use (default: `claude`) |
 
 - Missing required args produce an error with help text.
 - `--help` available on every command.
@@ -36,34 +36,39 @@ forge run --github <number> -i <N|all> [--runner <name>]
 
 Forge uses a runner abstraction to support multiple agentic coding CLIs. The architecture consists of:
 
-### Runner Protocol
+### Runner Interface
 
-A `Runner` protocol defines a single method:
+A `Runner` interface defines a single method:
 
-```python
-class Runner(Protocol):
-    def run(self, prompt: str) -> RunResult: ...
+```typescript
+interface Runner {
+  run(prompt: string): Promise<RunResult>;
+}
 ```
 
 ### RunResult
 
-`RunResult` is a dataclass that encapsulates the outcome of a single execution:
+`RunResult` is a type that encapsulates the outcome of a single execution:
 
-- `success: bool` — whether the task completed successfully
-- `exit_code: int` — raw exit code from the subprocess
-- `duration_seconds: float` — wall-clock time of the execution
-- `output: str | None` — captured stdout
-- `error: str | None` — human-readable error message if the task failed
+- `success: boolean` — whether the task completed successfully
+- `exitCode: number` — raw exit code from the subprocess
+- `durationSeconds: number` — wall-clock time of the execution
+- `output: string | null` — captured stdout
+- `error: string | null` — human-readable error message if the task failed
 
 Each adapter is responsible for interpreting its CLI's output and translating it into this common structure. The orchestration loop only inspects `success` and `error`.
 
 ### ClaudeRunner
 
-The default runner. Spawns `claude -p --output-format json` and parses the JSON output to extract the `subtype` field. Returns `success=True` only when `subtype == "success"`. Translates error subtypes (`error_max_turns`, `error_max_budget_usd`) into human-readable messages.
+The default runner. Spawns `claude -p --output-format json` and parses the JSON output to extract the `subtype` field. Returns `success=true` only when `subtype == "success"`. Translates error subtypes (`error_max_turns`, `error_max_budget_usd`) into human-readable messages.
 
 ### Registry
 
-The `runners/` package exposes `get_runner(name: str) -> Runner`. Unknown names raise a descriptive error listing available runners. Adding a new runner means implementing a single adapter class and registering it.
+The `runners/` module exposes `getRunner(name: string): Runner`. Unknown names throw a descriptive error listing available runners. Adding a new runner means implementing a single adapter class and registering it.
+
+## Error Handling
+
+Modules throw typed errors. Only `cli.ts` catches errors, formats user-facing messages, and calls `process.exit()`. No module imports or references the CLI framework directly. This decouples business logic from presentation and simplifies testing.
 
 ## Execution Flow
 
@@ -89,7 +94,7 @@ Before spawning the first session, Forge prompts the user:
 1. **Branch name** — with a sensible suggestion using the unified `forge/<slug>` convention. Local mode uses the spec name, GitHub mode uses the PRD title slug, and GitHub falls back to `forge/issue-<number>` when needed.
 2. **Base branch / PR target** — suggests `main`.
 
-Simple `questionary` prompts, no AI needed.
+Interactive prompts use `@clack/prompts`.
 
 ## PR Report
 
@@ -97,6 +102,7 @@ At the end of a run, Forge pushes the branch and creates a PR with a report:
 
 ```markdown
 ## Forge Report
+
 **Runner:** claude
 
 - #1 Setup database schema: completed
@@ -133,34 +139,49 @@ Whether `.forge/` is gitignored is the developer's decision per repo. Forge does
 
 ## Tech Stack
 
-- **Language:** Python
-- **CLI framework:** `typer`
-- **Interactive prompts:** `questionary`
-- **Prompt templates:** Markdown files with `{placeholders}`
+- **Language:** TypeScript
+- **Runtime:** Bun
+- **CLI framework:** Commander.js
+- **Interactive prompts:** @clack/prompts
+- **Prompt templates:** Markdown files interpolated with template literals
 
 ## Project Structure
 
 ```
-forge/
-├── pyproject.toml
+prd-forge/
+├── package.json
+├── tsconfig.json
 ├── src/
-│   └── forge/
-│       ├── __init__.py
-│       ├── cli.py              # typer app, subcommands
-│       ├── github.py           # GitHub/gh CLI integration
-│       ├── local.py            # local spec operations
-│       ├── runner.py           # Runner protocol, RunResult, orchestration loop
-│       ├── prompt.py           # template loading and rendering
-│       ├── runners/
-│       │   ├── __init__.py     # get_runner() registry
-│       │   ├── claude.py       # ClaudeRunner adapter
-│       │   └── codex.py        # CodexRunner adapter
-│       └── templates/
-│           └── execute.md      # prompt template
-└── skills/
-    ├── forge-interview/
-    ├── forge-prd/
-    └── forge-issues/
+│   ├── cli.ts              # Commander.js app, subcommands
+│   ├── github.ts           # GitHub/gh CLI integration
+│   ├── local.ts            # local spec operations
+│   ├── runner.ts           # Runner interface, RunResult, orchestration loop
+│   ├── git.ts              # git operations and commit flow
+│   ├── prompt.ts           # template loading and rendering
+│   ├── naming.ts           # branch name generation
+│   ├── types.ts            # shared types
+│   ├── skills.ts           # skill symlink management
+│   ├── runners/
+│   │   ├── index.ts        # getRunner() registry
+│   │   ├── claude.ts       # ClaudeRunner adapter
+│   │   └── codex.ts        # CodexRunner adapter
+│   ├── templates/
+│   │   └── execute.md      # prompt template
+│   └── skills/
+│       ├── forge-interview/
+│       ├── forge-prd/
+│       └── forge-issues/
+└── tests/
+    ├── cli.test.ts
+    ├── local.test.ts
+    ├── github.test.ts
+    ├── runners.test.ts
+    ├── commit-flow.test.ts
+    ├── git.test.ts
+    ├── naming.test.ts
+    ├── prompt.test.ts
+    ├── scaffold.test.ts
+    └── skills.test.ts
 ```
 
 Skills remain as Claude Code skills. They are not invoked by the CLI on day one but live in the repo for future integration.
