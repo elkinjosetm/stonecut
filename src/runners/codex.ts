@@ -6,7 +6,7 @@
  * output on failure.
  */
 
-import type { Runner, RunResult } from "../types.js";
+import type { LogWriter, Runner, RunResult } from "../types.js";
 
 function extractError(stdout: string): string {
 	for (const raw of stdout.split("\n")) {
@@ -43,6 +43,10 @@ function extractError(stdout: string): string {
 }
 
 export class CodexRunner implements Runner {
+	logEnvironment(_logger: LogWriter): void {
+		// No environment-specific config to log for Codex.
+	}
+
 	async run(prompt: string): Promise<RunResult> {
 		const start = performance.now();
 

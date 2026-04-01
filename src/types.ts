@@ -23,6 +23,7 @@ export interface IterationResult {
 /** Protocol that all runner adapters must satisfy. */
 export interface Runner {
 	run(prompt: string): Promise<RunResult>;
+	logEnvironment(logger: LogWriter): void;
 }
 
 /** Snapshot of the working tree state before a runner session. */

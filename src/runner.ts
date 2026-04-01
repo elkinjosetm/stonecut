@@ -120,6 +120,7 @@ export async function runAfkLoop<T extends { number: number }>(
 	const { logger, git, runner, runnerName } = session;
 
 	logger.log(`Session started — runner: ${runnerName}, iterations: ${iterations}`);
+	runner.logEnvironment(logger);
 	logger.log("");
 	const results: IterationResult[] = [];
 	const sessionStart = performance.now();

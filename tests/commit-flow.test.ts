@@ -27,6 +27,8 @@ class FakeRunner implements Runner {
 		this._success = success;
 	}
 
+	logEnvironment(): void {}
+
 	async run(prompt: string): Promise<RunResult> {
 		this.calls.push(prompt);
 		return { success: this._success, exitCode: 0, durationSeconds: 0.1 };
@@ -293,6 +295,7 @@ describe("runAfkLoop", () => {
 	test("runner failure does not complete issue", async () => {
 		const source = new FakeSource([{ number: 1, title: "Task 1" }]);
 		const failRunner: Runner = {
+			logEnvironment() {},
 			async run() {
 				return {
 					success: false,
@@ -462,6 +465,7 @@ describe("runAfkLoop", () => {
 			{ number: 2, title: "Task 2" },
 		]);
 		const failRunner: Runner = {
+			logEnvironment() {},
 			async run() {
 				return {
 					success: false,
@@ -499,6 +503,7 @@ describe("runAfkLoop", () => {
 		]);
 		let callCount = 0;
 		const runner: Runner = {
+			logEnvironment() {},
 			async run() {
 				callCount++;
 				// First call fails (issue 1 attempt 1), rest succeed
@@ -535,6 +540,7 @@ describe("runAfkLoop", () => {
 			{ number: 2, title: "Task 2" },
 		]);
 		const failRunner: Runner = {
+			logEnvironment() {},
 			async run() {
 				return {
 					success: false,
@@ -593,6 +599,7 @@ describe("runAfkLoop", () => {
 		const source = new FakeSource([{ number: 1, title: "Task 1" }]);
 		let callCount = 0;
 		const runner: Runner = {
+			logEnvironment() {},
 			async run() {
 				callCount++;
 				return {
