@@ -1,20 +1,20 @@
-# Forge — Design Document
+# Stonecut — Design Document
 
-Forge is a CLI tool that executes PRD-driven development workflows using agentic coding CLIs. It picks up issues (vertical slices from a PRD), spawns headless CLI sessions to implement them, handles bookkeeping, and creates pull requests with execution reports.
+Stonecut is a CLI tool that executes PRD-driven development workflows using agentic coding CLIs. It picks up issues (vertical slices from a PRD), spawns headless CLI sessions to implement them, handles bookkeeping, and creates pull requests with execution reports.
 
 This document captures the design decisions for the initial build and future roadmap.
 
 ## Naming
 
-- **Project name:** Forge (repo: forge-orchestrator)
-- **CLI command:** `forge`
-- **Rationale:** A PRD is a blueprint, issues are the pieces, the tool forges them into reality. The primary execution entry point is `forge run`, with source selection handled by flags.
+- **Project name:** Stonecut (repo: stonecut)
+- **CLI command:** `stonecut`
+- **Rationale:** A PRD is a blueprint, issues are the pieces, the tool cuts them precisely into reality. The primary execution entry point is `stonecut run`, with source selection handled by flags.
 
 ## CLI Commands
 
 ```
-forge run --local <name> -i <N|all> [--runner <name>]
-forge run --github <number> -i <N|all> [--runner <name>]
+stonecut run --local <name> -i <N|all> [--runner <name>]
+stonecut run --github <number> -i <N|all> [--runner <name>]
 ```
 
 ### Flags
@@ -29,12 +29,12 @@ forge run --github <number> -i <N|all> [--runner <name>]
 
 ### Sources
 
-- **`forge run --local <name>`** — local PRD. Looks in `.forge/<name>/` for `prd.md` and `issues/`.
-- **`forge run --github <number>`** — GitHub PRD. Issue number on the current repo, tasks are sub-issues.
+- **`stonecut run --local <name>`** — local PRD. Looks in `.stonecut/<name>/` for `prd.md` and `issues/`.
+- **`stonecut run --github <number>`** — GitHub PRD. Issue number on the current repo, tasks are sub-issues.
 
 ## Runner Architecture
 
-Forge uses a runner abstraction to support multiple agentic coding CLIs. The architecture consists of:
+Stonecut uses a runner abstraction to support multiple agentic coding CLIs. The architecture consists of:
 
 ### Runner Interface
 
@@ -81,7 +81,7 @@ Modules throw typed errors. Only `cli.ts` catches errors, formats user-facing me
    - On success: close issue / update `status.json`, log to `progress.txt`.
    - On failure: record error, move on.
 6. Loops until iterations exhausted.
-7. After all iterations: push branch, create PR with Forge Report.
+7. After all iterations: push branch, create PR with Stonecut Report.
 
 ### Prompt
 
@@ -89,19 +89,19 @@ Single `execute.md` template with placeholders. The template is CLI-agnostic —
 
 ## Pre-execution Flow
 
-Before spawning the first session, Forge prompts the user:
+Before spawning the first session, Stonecut prompts the user:
 
-1. **Branch name** — with a sensible suggestion using the unified `forge/<slug>` convention. Local mode uses the spec name, GitHub mode uses the PRD title slug, and GitHub falls back to `forge/issue-<number>` when needed.
+1. **Branch name** — with a sensible suggestion using the unified `stonecut/<slug>` convention. Local mode uses the spec name, GitHub mode uses the PRD title slug, and GitHub falls back to `stonecut/issue-<number>` when needed.
 2. **Base branch / PR target** — suggests `main`.
 
 Interactive prompts use `@clack/prompts`.
 
 ## PR Report
 
-At the end of a run, Forge pushes the branch and creates a PR with a report:
+At the end of a run, Stonecut pushes the branch and creates a PR with a report:
 
 ```markdown
-## Forge Report
+## Stonecut Report
 
 **Runner:** claude
 
@@ -114,21 +114,21 @@ In GitHub mode, the PR title is the PRD issue title, with `PRD #<number>` as the
 
 ## Local Spec Structure
 
-Local specs live in `.forge/` at the repo root:
+Local specs live in `.stonecut/` at the repo root:
 
 ```
-.forge/
+.stonecut/
 └── my-feature/
     ├── prd.md                    # The PRD (created by write-a-prd skill)
     ├── issues/
     │   ├── 01-setup.md           # Vertical slice issues (created by prd-to-issues skill)
     │   ├── 02-core.md
     │   └── 03-api.md
-    ├── status.json               # Auto-created by Forge
-    └── progress.txt              # Auto-created by Forge
+    ├── status.json               # Auto-created by Stonecut
+    └── progress.txt              # Auto-created by Stonecut
 ```
 
-Whether `.forge/` is gitignored is the developer's decision per repo. Forge does not touch `.gitignore`.
+Whether `.stonecut/` is gitignored is the developer's decision per repo. Stonecut does not touch `.gitignore`.
 
 ## GitHub Mode
 
@@ -148,7 +148,7 @@ Whether `.forge/` is gitignored is the developer's decision per repo. Forge does
 ## Project Structure
 
 ```
-prd-forge/
+stonecut/
 ├── package.json
 ├── tsconfig.json
 ├── src/
@@ -168,9 +168,9 @@ prd-forge/
 │   ├── templates/
 │   │   └── execute.md      # prompt template
 │   └── skills/
-│       ├── forge-interview/
-│       ├── forge-prd/
-│       └── forge-issues/
+│       ├── stonecut-interview/
+│       ├── stonecut-prd/
+│       └── stonecut-issues/
 └── tests/
     ├── cli.test.ts
     ├── local.test.ts
@@ -190,24 +190,24 @@ Skills remain as Claude Code skills. They are not invoked by the CLI on day one 
 
 ## Pipeline
 
-Ideas can come from anywhere — a GitHub issue, a Jira ticket, a Slack thread, an MCP server, or just a conversation. Forge doesn't prescribe where ideas originate. The pipeline starts once you're ready to act on one:
+Ideas can come from anywhere — a GitHub issue, a Jira ticket, a Slack thread, an MCP server, or just a conversation. Stonecut doesn't prescribe where ideas originate. The pipeline starts once you're ready to act on one:
 
-1. **Interview** — Stress-test the idea via `/forge-interview`.
-2. **PRD** — Write the spec via `/forge-prd`. Saves to a local file (`.forge/<name>/prd.md`) or a GitHub issue labeled `prd`.
-3. **Issues** — Break the PRD into vertical slices via `/forge-issues`. Creates local markdown files or GitHub sub-issues.
-4. **Execute** — `forge run` picks up the issues and implements them sequentially.
+1. **Interview** — Stress-test the idea via `/stonecut-interview`.
+2. **PRD** — Write the spec via `/stonecut-prd`. Saves to a local file (`.stonecut/<name>/prd.md`) or a GitHub issue labeled `prd`.
+3. **Issues** — Break the PRD into vertical slices via `/stonecut-issues`. Creates local markdown files or GitHub sub-issues.
+4. **Execute** — `stonecut run` picks up the issues and implements them sequentially.
 
 ### Suggested practice: managing your idea backlog with GitHub labels
 
 For projects using GitHub issues, we recommend a label-driven flow to track ideas before they enter the pipeline:
 
 1. **Capture** — Create a GitHub issue with the `roadmap` label. This is the idea backlog entry, regardless of where the idea originated.
-2. **Interview** — Run `/forge-interview` on the idea. Discussion happens on the roadmap issue.
-3. **PRD** — Run `/forge-prd`. The roadmap issue is closed with a comment linking forward to the new PRD issue. The PRD issue is created with the `prd` label and links back to the roadmap issue for history.
-4. **Issues** — Run `/forge-issues`. Sub-issues are created and linked to the PRD issue.
-5. **Execute** — `forge run --github <prd_number>` implements the sub-issues. Each is closed on completion.
-6. **PR** — Forge pushes the branch and creates a PR. The PR body includes "Closes #prd_number", so the PRD issue is auto-closed when the PR merges.
+2. **Interview** — Run `/stonecut-interview` on the idea. Discussion happens on the roadmap issue.
+3. **PRD** — Run `/stonecut-prd`. The roadmap issue is closed with a comment linking forward to the new PRD issue. The PRD issue is created with the `prd` label and links back to the roadmap issue for history.
+4. **Issues** — Run `/stonecut-issues`. Sub-issues are created and linked to the PRD issue.
+5. **Execute** — `stonecut run --github <prd_number>` implements the sub-issues. Each is closed on completion.
+6. **PR** — Stonecut pushes the branch and creates a PR. The PR body includes "Closes #prd_number", so the PRD issue is auto-closed when the PR merges.
 
 This keeps each artifact (idea, spec, implementation tickets) as a separate issue with a clear purpose and traceable lineage.
 
-See [GitHub issues labeled `roadmap`](https://github.com/elkinjosetm/prd-forge/labels/roadmap) for current ideas.
+See [GitHub issues labeled `roadmap`](https://github.com/elkinjosetm/stonecut/labels/roadmap) for current ideas.

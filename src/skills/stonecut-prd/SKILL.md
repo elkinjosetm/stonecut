@@ -1,9 +1,9 @@
 ---
-name: forge-prd
+name: stonecut-prd
 description: Write a PRD through structured user interview, codebase exploration, and module design. Saves the result as a local file or GitHub issue. Use when the user wants to create a product requirements document or plan a new feature.
 ---
 
-You are writing a PRD as part of the PRD Forge workflow. Follow these steps, skipping any that aren't necessary for the situation.
+You are writing a PRD as part of the Stonecut workflow. Follow these steps, skipping any that aren't necessary for the situation.
 
 ## Process
 
@@ -29,7 +29,7 @@ Check with the user that these modules match their expectations. Ask which modul
 
 Ask the user where to save the PRD:
 
-- **Local file** — Save as `.forge/<name>/prd.md` in the project. Ask the user: "What should I name this spec?" The name can be anything — a ticket ID (e.g., `ASC-1`), a descriptive slug (e.g., `auth-refactor`), or whatever fits. Create the `.forge/<name>/` directory if it doesn't exist.
+- **Local file** — Save as `.stonecut/<name>/prd.md` in the project. Ask the user: "What should I name this spec?" The name can be anything — a ticket ID (e.g., `ASC-1`), a descriptive slug (e.g., `auth-refactor`), or whatever fits. Create the `.stonecut/<name>/` directory if it doesn't exist.
 - **GitHub issue** — Create a GitHub issue using `gh issue create --label prd`. Before creating, ensure the `prd` label exists:
 
   ```bash
@@ -39,7 +39,7 @@ Ask the user where to save the PRD:
   fi
   ```
 
-If the project already has a `.forge/` directory, default to suggesting local. Otherwise, just ask.
+If the project already has a `.stonecut/` directory, default to suggesting local. Otherwise, just ask.
 
 ### 6. Documentation impact check
 
@@ -124,4 +124,4 @@ Any further notes about the feature.
 
 ## Next Step
 
-Once the PRD is saved, ask the user: "Ready to break this into issues? I can run `/forge-issues` next."
+Once the PRD is saved, ask the user: "Ready to break this into issues? I can run `/stonecut-issues` next."

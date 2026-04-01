@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * Forge CLI — PRD-driven development workflow orchestrator.
+ * Stonecut CLI — PRD-driven development workflow orchestrator.
  *
  * Modules throw errors; only this file catches them, formats user-facing
  * messages, and calls process.exit().
@@ -78,18 +78,18 @@ export function validateRunSource(
 }
 
 // ---------------------------------------------------------------------------
-// Forge report
+// Stonecut report
 // ---------------------------------------------------------------------------
 
 /**
- * Build the Forge Report section for a PR body.
+ * Build the Stonecut Report section for a PR body.
  */
-export function buildForgeReport(
+export function buildReport(
 	results: IterationResult[],
 	runnerName: string,
 	prdNumber?: number,
 ): string {
-	const lines = ["## Forge Report", `**Runner:** ${runnerName}`, ""];
+	const lines = ["## Stonecut Report", `**Runner:** ${runnerName}`, ""];
 	for (const r of results) {
 		if (r.success) {
 			lines.push(`- #${r.issueNumber} ${r.issueFilename}: completed`);
@@ -112,7 +112,7 @@ export function buildForgeReport(
 // ---------------------------------------------------------------------------
 
 function commentOnIssue(issueNumber: number, runnerOutput: string | undefined): void {
-	let body = "**Forge:** Runner completed but produced no file changes.\n";
+	let body = "**Stonecut:** Runner completed but produced no file changes.\n";
 	if (runnerOutput) {
 		body +=
 			"\n<details><summary>Runner output</summary>\n\n" +
@@ -185,7 +185,7 @@ export async function pushAndMaybePr(
 
 	const [remaining, total] = await source.getRemainingCount();
 	if (remaining === 0) {
-		const body = buildForgeReport(results, runnerName, prdNumber);
+		const body = buildReport(results, runnerName, prdNumber);
 		createPr(prTitle, body, baseBranch);
 		logger.log("Created PR.");
 	} else {
@@ -210,7 +210,7 @@ export async function runLocal(
 	const session: Session = { logger, git: defaultGitOps, runner, runnerName };
 
 	try {
-		const suggestedBranch = prdIdentifier ? `forge/${prdIdentifier}` : "forge/spec";
+		const suggestedBranch = prdIdentifier ? `stonecut/${prdIdentifier}` : "stonecut/spec";
 		const [branch, baseBranch] = await preExecution(suggestedBranch);
 
 		const prdContent = await source.getPrdContent();
@@ -229,7 +229,15 @@ export async function runLocal(
 			session,
 		);
 
-		await pushAndMaybePr(results, source, branch, baseBranch, `Forge: ${name}`, runnerName, logger);
+		await pushAndMaybePr(
+			results,
+			source,
+			branch,
+			baseBranch,
+			`Stonecut: ${name}`,
+			runnerName,
+			logger,
+		);
 	} finally {
 		logger.close();
 	}
@@ -249,7 +257,7 @@ export async function runGitHub(
 	try {
 		const prd = source.getPrd();
 		const prdSlug = slugifyBranchComponent(prd.title);
-		const suggestedBranch = prdSlug ? `forge/${prdSlug}` : `forge/issue-${number}`;
+		const suggestedBranch = prdSlug ? `stonecut/${prdSlug}` : `stonecut/issue-${number}`;
 		const prTitle = prd.title || `PRD #${number}`;
 		const [branch, baseBranch] = await preExecution(suggestedBranch);
 
@@ -284,14 +292,14 @@ export function buildProgram(): Command {
 	const program = new Command();
 
 	program
-		.name("forge")
-		.description("Forge — execute PRD-driven development workflows using agentic coding CLIs.")
-		.version(`forge ${version}`, "-V, --version");
+		.name("stonecut")
+		.description("Stonecut — execute PRD-driven development workflows using agentic coding CLIs.")
+		.version(`stonecut ${version}`, "-V, --version");
 
 	program
 		.command("run")
 		.description("Execute issues from a local PRD or GitHub PRD.")
-		.option("--local <name>", "Local PRD name (.forge/<name>/)")
+		.option("--local <name>", "Local PRD name (.stonecut/<name>/)")
 		.option("--github <number>", "GitHub PRD issue number", parseGitHubIssueNumber)
 		.requiredOption("-i, --iterations <value>", "Number of issues to process, or 'all'")
 		.option("--runner <name>", "Agentic CLI runner (claude, codex)", "claude")
@@ -309,7 +317,7 @@ export function buildProgram(): Command {
 
 	program
 		.command("setup-skills")
-		.description("Install Forge skills as symlinks into ~/.claude/skills/.")
+		.description("Install Stonecut skills as symlinks into ~/.claude/skills/.")
 		.option(
 			"--target <path>",
 			"Claude root path (e.g. ~/.claude-acme). Skills are installed into <target>/skills/.",
@@ -326,7 +334,7 @@ export function buildProgram(): Command {
 
 	program
 		.command("remove-skills")
-		.description("Remove Forge skill symlinks from ~/.claude/skills/.")
+		.description("Remove Stonecut skill symlinks from ~/.claude/skills/.")
 		.option(
 			"--target <path>",
 			"Claude root path (e.g. ~/.claude-acme). Skills are removed from <target>/skills/.",

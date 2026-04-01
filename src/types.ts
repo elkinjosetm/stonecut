@@ -1,5 +1,5 @@
 /**
- * Core types and interfaces shared across the Forge CLI.
+ * Core types and interfaces shared across the Stonecut CLI.
  */
 
 /** Structured result from a single runner execution. */
@@ -74,7 +74,7 @@ export interface LogWriter {
 	close(): void;
 }
 
-/** Session context threaded through a forge run. */
+/** Session context threaded through a stonecut run. */
 export interface Session {
 	logger: LogWriter;
 	git: GitOps;

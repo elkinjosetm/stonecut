@@ -24,7 +24,7 @@ import type { WorkingTreeSnapshot } from "../src/types";
 
 /** Create a minimal git repo with one initial commit and return its path. */
 function makeGitRepo(): string {
-	const dir = mkdtempSync(join(tmpdir(), "forge-git-test-"));
+	const dir = mkdtempSync(join(tmpdir(), "stonecut-git-test-"));
 	Bun.spawnSync(["git", "init"], { cwd: dir, stdout: "pipe", stderr: "pipe" });
 	Bun.spawnSync(["git", "config", "user.email", "test@test.com"], {
 		cwd: dir,
@@ -181,7 +181,7 @@ describe("pushBranch", () => {
 
 	test("succeeds when pushing to a local bare remote", () => {
 		// Set up a bare remote repo
-		const bareDir = mkdtempSync(join(tmpdir(), "forge-bare-"));
+		const bareDir = mkdtempSync(join(tmpdir(), "stonecut-bare-"));
 		Bun.spawnSync(["git", "init", "--bare", bareDir], {
 			stdout: "pipe",
 			stderr: "pipe",

@@ -19,7 +19,7 @@ import { SKILL_NAMES, getSkillsSourceDir, setupSkills, removeSkills } from "../s
 
 /** Create a fresh temp directory for each test. */
 function makeTmpDir(): string {
-	return mkdtempSync(join(tmpdir(), "forge-skills-test-"));
+	return mkdtempSync(join(tmpdir(), "stonecut-skills-test-"));
 }
 
 /** Create a claude root with a skills/ subdirectory. */
@@ -126,7 +126,7 @@ describe("setupSkills conflicts", () => {
 // ---------------------------------------------------------------------------
 
 describe("removeSkills", () => {
-	test("removes forge symlinks", () => {
+	test("removes stonecut symlinks", () => {
 		const root = makeClaudeRoot();
 		setupSkills(root);
 		const skillsDir = join(root, "skills");
@@ -141,7 +141,7 @@ describe("removeSkills", () => {
 		}
 	});
 
-	test("leaves non-forge symlinks", () => {
+	test("leaves non-stonecut symlinks", () => {
 		const root = makeClaudeRoot();
 		const otherDir = makeTmpDir();
 		const skillsDir = join(root, "skills");
@@ -150,7 +150,7 @@ describe("removeSkills", () => {
 		}
 
 		removeSkills(root);
-		// All symlinks should still be there — they don't point to Forge
+		// All symlinks should still be there — they don't point to Stonecut
 		for (const name of SKILL_NAMES) {
 			expect(lstatSync(join(skillsDir, name)).isSymbolicLink()).toBe(true);
 			expect(readlinkSync(join(skillsDir, name))).toBe(otherDir);
@@ -266,7 +266,7 @@ describe("setupSkills --target", () => {
 // ---------------------------------------------------------------------------
 
 describe("removeSkills --target", () => {
-	test("removes forge symlinks at target", () => {
+	test("removes stonecut symlinks at target", () => {
 		const root = makeTmpDir();
 		const claudeRoot = join(root, ".claude-acme");
 		mkdirSync(claudeRoot);
@@ -293,7 +293,7 @@ describe("removeSkills --target", () => {
 		expect(existsSync(nonexistent)).toBe(false);
 	});
 
-	test("leaves non-forge symlinks at target", () => {
+	test("leaves non-stonecut symlinks at target", () => {
 		const root = makeTmpDir();
 		const claudeRoot = join(root, ".claude-other");
 		const skillsDir = join(claudeRoot, "skills");
@@ -309,50 +309,5 @@ describe("removeSkills --target", () => {
 			expect(lstatSync(join(skillsDir, name)).isSymbolicLink()).toBe(true);
 			expect(readlinkSync(join(skillsDir, name))).toBe(otherDir);
 		}
-	});
-});
-
-// ---------------------------------------------------------------------------
-// Legacy colon-name migration
-// ---------------------------------------------------------------------------
-
-describe("legacy skill migration", () => {
-	test("setup-skills removes legacy forge:* symlinks", () => {
-		const root = makeClaudeRoot();
-		const skillsDir = join(root, "skills");
-		const otherDir = makeTmpDir();
-
-		// Create legacy colon-separated symlinks
-		symlinkSync(otherDir, join(skillsDir, "forge:interview"));
-		symlinkSync(otherDir, join(skillsDir, "forge:prd"));
-		symlinkSync(otherDir, join(skillsDir, "forge:issues"));
-
-		const result = setupSkills(root);
-
-		// Legacy symlinks should be removed
-		expect(existsSync(join(skillsDir, "forge:interview"))).toBe(false);
-		expect(existsSync(join(skillsDir, "forge:prd"))).toBe(false);
-		expect(existsSync(join(skillsDir, "forge:issues"))).toBe(false);
-
-		// New symlinks should be created
-		for (const name of SKILL_NAMES) {
-			expect(lstatSync(join(skillsDir, name)).isSymbolicLink()).toBe(true);
-		}
-
-		// Migration messages present
-		expect(result.messages.some((m) => m.includes("legacy skill link"))).toBe(true);
-	});
-
-	test("remove-skills cleans up legacy forge:* symlinks", () => {
-		const root = makeClaudeRoot();
-		const skillsDir = join(root, "skills");
-		const otherDir = makeTmpDir();
-
-		// Create legacy colon-separated symlinks
-		symlinkSync(otherDir, join(skillsDir, "forge:interview"));
-
-		const result = removeSkills(root);
-		expect(existsSync(join(skillsDir, "forge:interview"))).toBe(false);
-		expect(result.messages.some((m) => m.includes("legacy skill link"))).toBe(true);
 	});
 });

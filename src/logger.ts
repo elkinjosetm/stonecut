@@ -2,7 +2,7 @@
  * Logger — dual-output session logger.
  *
  * Writes to both console and a project-scoped log file at
- * .forge/logs/<prdIdentifier>-<timestamp>.log.
+ * .stonecut/logs/<prdIdentifier>-<timestamp>.log.
  */
 
 import { appendFileSync, mkdirSync } from "fs";
@@ -14,7 +14,7 @@ export class Logger implements LogWriter {
 
 	constructor(prdIdentifier: string) {
 		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-		const logDir = join(".forge", "logs");
+		const logDir = join(".stonecut", "logs");
 		mkdirSync(logDir, { recursive: true });
 		this.filePath = join(logDir, `${prdIdentifier}-${timestamp}.log`);
 	}

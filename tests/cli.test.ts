@@ -1,11 +1,11 @@
 /**
- * Tests for CLI command setup, flag parsing, validation, forge report,
+ * Tests for CLI command setup, flag parsing, validation, stonecut report,
  * execution paths, and pre-execution prompts.
  */
 
 import { describe, expect, mock, spyOn, test } from "bun:test";
 import {
-	buildForgeReport,
+	buildReport,
 	buildProgram,
 	parseIterations,
 	preExecution,
@@ -89,12 +89,12 @@ describe("--version flag", () => {
 		program.configureOutput({ writeOut: (str) => (output = str) });
 
 		try {
-			await program.parseAsync(["node", "forge", "--version"]);
+			await program.parseAsync(["node", "stonecut", "--version"]);
 		} catch {
 			// Commander throws on exit after --version
 		}
 
-		expect(output).toMatch(/^forge \d+\.\d+\.\d+/);
+		expect(output).toMatch(/^stonecut \d+\.\d+\.\d+/);
 	});
 });
 
@@ -117,7 +117,7 @@ describe("run command routing", () => {
 			}
 		});
 
-		await program.parseAsync(["node", "forge", "run", "--local", "my-spec", "-i", "3"]);
+		await program.parseAsync(["node", "stonecut", "run", "--local", "my-spec", "-i", "3"]);
 
 		expect(localSpy).toHaveBeenCalledWith("my-spec", 3, "claude");
 		localSpy.mockRestore();
@@ -136,7 +136,7 @@ describe("run command routing", () => {
 			}
 		});
 
-		await program.parseAsync(["node", "forge", "run", "--github", "42", "-i", "all"]);
+		await program.parseAsync(["node", "stonecut", "run", "--github", "42", "-i", "all"]);
 
 		expect(githubSpy).toHaveBeenCalledWith(42, "all", "claude");
 		githubSpy.mockRestore();
@@ -155,7 +155,7 @@ describe("run command routing", () => {
 			}
 		});
 
-		await program.parseAsync(["node", "forge", "run", "--local", "spec", "-i", "1"]);
+		await program.parseAsync(["node", "stonecut", "run", "--local", "spec", "-i", "1"]);
 
 		expect(localSpy).toHaveBeenCalledWith("spec", 1, "claude");
 		localSpy.mockRestore();
@@ -176,7 +176,7 @@ describe("run command routing", () => {
 
 		await program.parseAsync([
 			"node",
-			"forge",
+			"stonecut",
 			"run",
 			"--local",
 			"spec",
@@ -203,7 +203,7 @@ describe("run command validation", () => {
 
 		let caught: Error | undefined;
 		try {
-			await program.parseAsync(["node", "forge", "run", "-i", "1"]);
+			await program.parseAsync(["node", "stonecut", "run", "-i", "1"]);
 		} catch (err) {
 			caught = err as Error;
 		}
@@ -221,7 +221,7 @@ describe("run command validation", () => {
 		try {
 			await program.parseAsync([
 				"node",
-				"forge",
+				"stonecut",
 				"run",
 				"--local",
 				"spec",
@@ -240,12 +240,12 @@ describe("run command validation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildForgeReport
+// buildReport
 // ---------------------------------------------------------------------------
 
-describe("buildForgeReport", () => {
+describe("buildReport", () => {
 	test("includes runner name", () => {
-		const report = buildForgeReport([], "claude");
+		const report = buildReport([], "claude");
 		expect(report).toContain("**Runner:** claude");
 	});
 
@@ -258,7 +258,7 @@ describe("buildForgeReport", () => {
 				elapsedSeconds: 30,
 			},
 		];
-		const report = buildForgeReport(results, "claude");
+		const report = buildReport(results, "claude");
 		expect(report).toContain("- #1 setup.md: completed");
 	});
 
@@ -272,7 +272,7 @@ describe("buildForgeReport", () => {
 				error: "max turns exceeded",
 			},
 		];
-		const report = buildForgeReport(results, "codex");
+		const report = buildReport(results, "codex");
 		expect(report).toContain("- #2 api.md: failed — max turns exceeded");
 	});
 
@@ -285,7 +285,7 @@ describe("buildForgeReport", () => {
 				elapsedSeconds: 5,
 			},
 		];
-		const report = buildForgeReport(results, "claude");
+		const report = buildReport(results, "claude");
 		expect(report).toContain("- #3 db.md: failed — unknown error");
 	});
 
@@ -305,7 +305,7 @@ describe("buildForgeReport", () => {
 				error: "timeout",
 			},
 		];
-		const report = buildForgeReport(results, "claude");
+		const report = buildReport(results, "claude");
 		expect(report).toContain("- #1 setup.md: completed");
 		expect(report).toContain("- #2 api.md: failed — timeout");
 	});
@@ -319,7 +319,7 @@ describe("buildForgeReport", () => {
 				elapsedSeconds: 60,
 			},
 		];
-		const report = buildForgeReport(results, "claude", 42);
+		const report = buildReport(results, "claude", 42);
 		expect(report).toContain("Closes #42");
 	});
 
@@ -332,13 +332,13 @@ describe("buildForgeReport", () => {
 				elapsedSeconds: 60,
 			},
 		];
-		const report = buildForgeReport(results, "claude");
+		const report = buildReport(results, "claude");
 		expect(report).not.toContain("Closes");
 	});
 
-	test("starts with ## Forge Report header", () => {
-		const report = buildForgeReport([], "claude");
-		expect(report).toMatch(/^## Forge Report/);
+	test("starts with ## Stonecut Report header", () => {
+		const report = buildReport([], "claude");
+		expect(report).toMatch(/^## Stonecut Report/);
 	});
 });
 
@@ -347,36 +347,36 @@ describe("buildForgeReport", () => {
 // ---------------------------------------------------------------------------
 
 describe("branch and PR title naming", () => {
-	test("local branch uses forge/<slug> pattern", async () => {
+	test("local branch uses stonecut/<slug> pattern", async () => {
 		// Test the slug generation used in runLocal
 		const { slugifyBranchComponent } = await import("../src/naming");
 		const slug = slugifyBranchComponent("My Cool Spec");
-		expect(`forge/${slug}`).toBe("forge/my-cool-spec");
+		expect(`stonecut/${slug}`).toBe("stonecut/my-cool-spec");
 	});
 
 	test("local branch fallback when slug is empty", async () => {
 		const { slugifyBranchComponent } = await import("../src/naming");
 		const slug = slugifyBranchComponent("---");
-		const branch = slug ? `forge/${slug}` : "forge/spec";
-		expect(branch).toBe("forge/spec");
+		const branch = slug ? `stonecut/${slug}` : "stonecut/spec";
+		expect(branch).toBe("stonecut/spec");
 	});
 
-	test("github branch uses forge/<prd-slug> pattern", async () => {
+	test("github branch uses stonecut/<prd-slug> pattern", async () => {
 		const { slugifyBranchComponent } = await import("../src/naming");
 		const slug = slugifyBranchComponent("Rewrite CLI to TypeScript");
-		expect(`forge/${slug}`).toBe("forge/rewrite-cli-to-typescript");
+		expect(`stonecut/${slug}`).toBe("stonecut/rewrite-cli-to-typescript");
 	});
 
 	test("github branch fallback when slug is empty", async () => {
 		const { slugifyBranchComponent } = await import("../src/naming");
 		const slug = slugifyBranchComponent("");
-		const branch = slug ? `forge/${slug}` : "forge/issue-99";
-		expect(branch).toBe("forge/issue-99");
+		const branch = slug ? `stonecut/${slug}` : "stonecut/issue-99";
+		expect(branch).toBe("stonecut/issue-99");
 	});
 
-	test("local PR title is 'Forge: <name>'", () => {
+	test("local PR title is 'Stonecut: <name>'", () => {
 		const name = "my-spec";
-		expect(`Forge: ${name}`).toBe("Forge: my-spec");
+		expect(`Stonecut: ${name}`).toBe("Stonecut: my-spec");
 	});
 
 	test("github PR title uses PRD title", () => {
@@ -429,7 +429,15 @@ describe("pushAndMaybePr", () => {
 			},
 		];
 
-		await pushAndMaybePr(results, fakeSource(1, 1), "forge/test", "main", "Test", "claude", logger);
+		await pushAndMaybePr(
+			results,
+			fakeSource(1, 1),
+			"stonecut/test",
+			"main",
+			"Test",
+			"claude",
+			logger,
+		);
 
 		expect(pushSpy).not.toHaveBeenCalled();
 		expect(prSpy).not.toHaveBeenCalled();
@@ -451,14 +459,14 @@ describe("pushAndMaybePr", () => {
 		await pushAndMaybePr(
 			results,
 			fakeSource(5, 10),
-			"forge/test",
+			"stonecut/test",
 			"main",
 			"Test",
 			"claude",
 			logger,
 		);
 
-		expect(pushSpy).toHaveBeenCalledWith("forge/test");
+		expect(pushSpy).toHaveBeenCalledWith("stonecut/test");
 		expect(prSpy).not.toHaveBeenCalled();
 		expect(logger.messages.join("\n")).toContain("5/10 issues remaining — PR deferred.");
 
@@ -476,9 +484,17 @@ describe("pushAndMaybePr", () => {
 			{ issueNumber: 1, issueFilename: "task.md", success: true, elapsedSeconds: 30 },
 		];
 
-		await pushAndMaybePr(results, fakeSource(0, 1), "forge/test", "main", "Test", "claude", logger);
+		await pushAndMaybePr(
+			results,
+			fakeSource(0, 1),
+			"stonecut/test",
+			"main",
+			"Test",
+			"claude",
+			logger,
+		);
 
-		expect(pushSpy).toHaveBeenCalledWith("forge/test");
+		expect(pushSpy).toHaveBeenCalledWith("stonecut/test");
 		expect(prSpy).toHaveBeenCalled();
 		expect(logger.messages.join("\n")).toContain("Created PR.");
 
@@ -502,7 +518,7 @@ describe("pushAndMaybePr", () => {
 		await pushAndMaybePr(
 			results,
 			fakeSource(0, 1),
-			"forge/test",
+			"stonecut/test",
 			"main",
 			"Test",
 			"claude",
@@ -526,7 +542,9 @@ describe("preExecution", () => {
 		const clack = await import("@clack/prompts");
 		const gitMod = await import("../src/git");
 
-		const textMock = mock().mockResolvedValueOnce("forge/my-branch").mockResolvedValueOnce("main");
+		const textMock = mock()
+			.mockResolvedValueOnce("stonecut/my-branch")
+			.mockResolvedValueOnce("main");
 
 		spyOn(clack, "text").mockImplementation(textMock);
 		spyOn(gitMod, "ensureCleanTree").mockImplementation(() => {});
@@ -534,9 +552,9 @@ describe("preExecution", () => {
 		spyOn(gitMod, "checkoutOrCreateBranch").mockImplementation(() => {});
 		spyOn(console, "log").mockImplementation(() => {});
 
-		const [branch, baseBranch] = await preExecution("forge/suggested");
+		const [branch, baseBranch] = await preExecution("stonecut/suggested");
 
-		expect(branch).toBe("forge/my-branch");
+		expect(branch).toBe("stonecut/my-branch");
 		expect(baseBranch).toBe("main");
 
 		(clack.text as ReturnType<typeof mock>).mockRestore?.();
@@ -555,7 +573,7 @@ describe("preExecution", () => {
 		spyOn(clack, "isCancel").mockReturnValue(true);
 		spyOn(gitMod, "ensureCleanTree").mockImplementation(() => {});
 
-		await expect(preExecution("forge/test")).rejects.toThrow("Cancelled.");
+		await expect(preExecution("stonecut/test")).rejects.toThrow("Cancelled.");
 
 		(clack.text as unknown as ReturnType<typeof mock>).mockRestore?.();
 		(clack.isCancel as unknown as ReturnType<typeof mock>).mockRestore?.();
@@ -579,7 +597,7 @@ describe("preExecution", () => {
 		spyOn(gitMod, "checkoutOrCreateBranch").mockImplementation(() => {});
 		spyOn(console, "log").mockImplementation(() => {});
 
-		await preExecution("forge/test");
+		await preExecution("stonecut/test");
 
 		expect(callOrder[0]).toBe("ensureCleanTree");
 		expect(callOrder[1]).toBe("text");
@@ -595,7 +613,9 @@ describe("preExecution", () => {
 		const clack = await import("@clack/prompts");
 		const gitMod = await import("../src/git");
 
-		const textMock = mock().mockResolvedValueOnce("forge/custom").mockResolvedValueOnce("develop");
+		const textMock = mock()
+			.mockResolvedValueOnce("stonecut/custom")
+			.mockResolvedValueOnce("develop");
 
 		spyOn(clack, "text").mockImplementation(textMock);
 		spyOn(gitMod, "ensureCleanTree").mockImplementation(() => {});
@@ -603,9 +623,9 @@ describe("preExecution", () => {
 		const checkoutSpy = spyOn(gitMod, "checkoutOrCreateBranch").mockImplementation(() => {});
 		spyOn(console, "log").mockImplementation(() => {});
 
-		await preExecution("forge/suggested");
+		await preExecution("stonecut/suggested");
 
-		expect(checkoutSpy).toHaveBeenCalledWith("forge/custom");
+		expect(checkoutSpy).toHaveBeenCalledWith("stonecut/custom");
 
 		(clack.text as ReturnType<typeof mock>).mockRestore?.();
 		(gitMod.ensureCleanTree as ReturnType<typeof mock>).mockRestore?.();

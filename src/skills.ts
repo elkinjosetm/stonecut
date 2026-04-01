@@ -17,10 +17,7 @@ import {
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 
-export const SKILL_NAMES = ["forge-interview", "forge-prd", "forge-issues"];
-
-/** Old skill names that used ':' as separator — used for migration only. */
-const LEGACY_SKILL_NAMES = ["forge:interview", "forge:prd", "forge:issues"];
+export const SKILL_NAMES = ["stonecut-interview", "stonecut-prd", "stonecut-issues"];
 
 /**
  * Return the path to the skills/ directory shipped with this package.
@@ -68,7 +65,7 @@ export interface SkillsOutput {
 }
 
 /**
- * Install Forge skills as symlinks into the target skills directory.
+ * Install Stonecut skills as symlinks into the target skills directory.
  */
 export function setupSkills(claudeRoot?: string): SkillsOutput {
 	const sourceDir = getSkillsSourceDir();
@@ -79,15 +76,6 @@ export function setupSkills(claudeRoot?: string): SkillsOutput {
 	}
 
 	const targetDir = getSkillsTargetDir({ claudeRoot });
-
-	// Migrate legacy forge:* symlinks
-	for (const legacyName of LEGACY_SKILL_NAMES) {
-		const legacy = join(targetDir, legacyName);
-		if (isSymlink(legacy)) {
-			unlinkSync(legacy);
-			output.messages.push(`Migrated: removed legacy skill link '${legacyName}'`);
-		}
-	}
 
 	for (const name of SKILL_NAMES) {
 		const source = join(sourceDir, name);
@@ -133,7 +121,7 @@ export function setupSkills(claudeRoot?: string): SkillsOutput {
 }
 
 /**
- * Remove Forge skill symlinks from the target skills directory.
+ * Remove Stonecut skill symlinks from the target skills directory.
  */
 export function removeSkills(claudeRoot?: string): SkillsOutput {
 	const sourceDir = getSkillsSourceDir();
@@ -151,7 +139,7 @@ export function removeSkills(claudeRoot?: string): SkillsOutput {
 			continue;
 		}
 
-		// Only remove if it points into the Forge package
+		// Only remove if it points into the Stonecut package
 		let resolved: string;
 		try {
 			resolved = realpathSync(target);
@@ -169,15 +157,6 @@ export function removeSkills(claudeRoot?: string): SkillsOutput {
 
 		unlinkSync(target);
 		output.messages.push(`Removed ${name}`);
-	}
-
-	// Also clean up any legacy forge:* symlinks
-	for (const legacyName of LEGACY_SKILL_NAMES) {
-		const legacy = join(targetDir, legacyName);
-		if (isSymlink(legacy)) {
-			unlinkSync(legacy);
-			output.messages.push(`Removed legacy skill link '${legacyName}'`);
-		}
 	}
 
 	return output;
