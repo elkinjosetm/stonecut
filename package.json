@@ -1,6 +1,6 @@
 {
   "name": "stonecut",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "CLI that drives PRD-driven development with agentic coding CLIs",
   "license": "MIT",
   "repository": {
