@@ -67,4 +67,17 @@ export interface Source<T> {
 	getRemainingCount(): Promise<[number, number]>;
 	getPrdContent(): Promise<string>;
 }
-// test
+
+/** Logger interface for session-scoped logging. */
+export interface LogWriter {
+	log(message: string): void;
+	close(): void;
+}
+
+/** Session context threaded through a forge run. */
+export interface Session {
+	logger: LogWriter;
+	git: GitOps;
+	runner: Runner;
+	runnerName: string;
+}

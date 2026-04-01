@@ -5,9 +5,17 @@
  * mock.module, which leaks across test files in Bun's single-process runner.
  */
 
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { verifyAndFix, commitIssue, runAfkLoop, fmtTime, printSummary } from "../src/runner";
-import type { GitOps, RunResult, Runner, Source, WorkingTreeSnapshot } from "../src/types";
+import type {
+	GitOps,
+	LogWriter,
+	RunResult,
+	Runner,
+	Session,
+	Source,
+	WorkingTreeSnapshot,
+} from "../src/types";
 
 // -- Fake runner --------------------------------------------------------------
 
@@ -25,6 +33,16 @@ class FakeRunner implements Runner {
 	}
 }
 
+// -- Fake logger --------------------------------------------------------------
+
+class FakeLogger implements LogWriter {
+	messages: string[] = [];
+	log(message: string): void {
+		this.messages.push(message);
+	}
+	close(): void {}
+}
+
 // -- Fake git ops -------------------------------------------------------------
 
 function fakeGitOps(overrides: Partial<GitOps> = {}): GitOps {
@@ -33,6 +51,18 @@ function fakeGitOps(overrides: Partial<GitOps> = {}): GitOps {
 		stageChanges: () => true,
 		commitChanges: () => [true, "committed"],
 		revertUncommitted: () => {},
+		...overrides,
+	};
+}
+
+// -- Fake session -------------------------------------------------------------
+
+function fakeSession(overrides: Partial<Session> = {}): Session {
+	return {
+		logger: new FakeLogger(),
+		git: fakeGitOps(),
+		runner: new FakeRunner(),
+		runnerName: "claude",
 		...overrides,
 	};
 }
@@ -221,49 +251,39 @@ describe("fmtTime", () => {
 
 describe("printSummary", () => {
 	test("prints nothing for empty results", () => {
-		const logSpy = spyOn(console, "log").mockImplementation(() => {});
-		try {
-			printSummary([], 10);
-			expect(logSpy).not.toHaveBeenCalled();
-		} finally {
-			logSpy.mockRestore();
-		}
+		const logger = new FakeLogger();
+		printSummary([], 10, logger);
+		expect(logger.messages).toHaveLength(0);
 	});
 
 	test("prints per-issue status and totals", () => {
-		const output: string[] = [];
-		const logSpy = spyOn(console, "log").mockImplementation((...args) => {
-			output.push(args.join(" "));
-		});
-		try {
-			printSummary(
-				[
-					{
-						issueNumber: 1,
-						issueFilename: "Task 1",
-						success: true,
-						elapsedSeconds: 30,
-					},
-					{
-						issueNumber: 2,
-						issueFilename: "Task 2",
-						success: false,
-						elapsedSeconds: 15,
-						error: "crash",
-					},
-				],
-				50,
-			);
+		const logger = new FakeLogger();
+		printSummary(
+			[
+				{
+					issueNumber: 1,
+					issueFilename: "Task 1",
+					success: true,
+					elapsedSeconds: 30,
+				},
+				{
+					issueNumber: 2,
+					issueFilename: "Task 2",
+					success: false,
+					elapsedSeconds: 15,
+					error: "crash",
+				},
+			],
+			50,
+			logger,
+		);
 
-			const joined = output.join("\n");
-			expect(joined).toContain("=== Session Summary ===");
-			expect(joined).toContain("Issue 1 (Task 1): completed (30s)");
-			expect(joined).toContain("Issue 2 (Task 2): failed (15s)");
-			expect(joined).toContain("Total: 2 issues — 1 completed, 1 failed");
-			expect(joined).toContain("Total time: 50s");
-		} finally {
-			logSpy.mockRestore();
-		}
+		const joined = logger.messages.join("\n");
+		expect(joined).toContain("=== Session Summary ===");
+		expect(joined).toContain("Issue 1 (Task 1): completed (30s)");
+		expect(joined).toContain("Issue 2 (Task 2): failed (15s)");
+		expect(joined).toContain("Total: 2 issues — 1 completed, 1 failed");
+		expect(joined).toContain("Total time: 50s");
 	});
 });
 
@@ -282,28 +302,20 @@ describe("runAfkLoop", () => {
 				};
 			},
 		};
-		const git = fakeGitOps();
+		const session = fakeSession({ runner: failRunner });
 
-		const logSpy = spyOn(console, "log").mockImplementation(() => {});
-		try {
-			const results = await runAfkLoop(
-				source,
-				1,
-				() => "prompt",
-				(i) => i.title,
-				(i) => `#${i.number}: ${i.title}`,
-				failRunner,
-				"claude",
-				undefined,
-				git,
-			);
+		const results = await runAfkLoop(
+			source,
+			1,
+			() => "prompt",
+			(i) => i.title,
+			(i) => `#${i.number}: ${i.title}`,
+			session,
+		);
 
-			expect(results).toHaveLength(1);
-			expect(results[0].success).toBe(false);
-			expect(source.completed).toEqual([]);
-		} finally {
-			logSpy.mockRestore();
-		}
+		expect(results).toHaveLength(1);
+		expect(results[0].success).toBe(false);
+		expect(source.completed).toEqual([]);
 	});
 
 	test("no changes marks failure and calls onNoChanges", async () => {
@@ -311,58 +323,45 @@ describe("runAfkLoop", () => {
 		const runner = new FakeRunner(true);
 		const noChangesCalled: number[] = [];
 		const git = fakeGitOps({ stageChanges: () => false });
+		const session = fakeSession({ runner, git });
 
-		const logSpy = spyOn(console, "log").mockImplementation(() => {});
-		try {
-			const results = await runAfkLoop(
-				source,
-				1,
-				() => "prompt",
-				(i) => i.title,
-				(i) => `#${i.number}: ${i.title}`,
-				runner,
-				"claude",
-				(issue) => {
-					noChangesCalled.push(issue.number);
-				},
-				git,
-			);
+		const results = await runAfkLoop(
+			source,
+			1,
+			() => "prompt",
+			(i) => i.title,
+			(i) => `#${i.number}: ${i.title}`,
+			session,
+			(issue) => {
+				noChangesCalled.push(issue.number);
+			},
+		);
 
-			expect(results).toHaveLength(1);
-			expect(results[0].success).toBe(false);
-			expect(results[0].error).toBe("runner produced no changes");
-			expect(source.completed).toEqual([]);
-			expect(noChangesCalled).toEqual([1]);
-		} finally {
-			logSpy.mockRestore();
-		}
+		expect(results).toHaveLength(1);
+		expect(results[0].success).toBe(false);
+		expect(results[0].error).toBe("runner produced no changes");
+		expect(source.completed).toEqual([]);
+		expect(noChangesCalled).toEqual([1]);
 	});
 
 	test("successful commit completes issue", async () => {
 		const source = new FakeSource([{ number: 1, title: "Task 1" }]);
 		const runner = new FakeRunner(true);
 		const git = fakeGitOps();
+		const session = fakeSession({ runner, git });
 
-		const logSpy = spyOn(console, "log").mockImplementation(() => {});
-		try {
-			const results = await runAfkLoop(
-				source,
-				1,
-				() => "prompt",
-				(i) => i.title,
-				(i) => `#${i.number}: ${i.title}`,
-				runner,
-				"claude",
-				undefined,
-				git,
-			);
+		const results = await runAfkLoop(
+			source,
+			1,
+			() => "prompt",
+			(i) => i.title,
+			(i) => `#${i.number}: ${i.title}`,
+			session,
+		);
 
-			expect(results).toHaveLength(1);
-			expect(results[0].success).toBe(true);
-			expect(source.completed).toEqual([1]);
-		} finally {
-			logSpy.mockRestore();
-		}
+		expect(results).toHaveLength(1);
+		expect(results[0].success).toBe(true);
+		expect(source.completed).toEqual([1]);
 	});
 
 	test("commit failure stops session", async () => {
@@ -372,29 +371,22 @@ describe("runAfkLoop", () => {
 		]);
 		const runner = new FakeRunner(true);
 		const git = fakeGitOps({ commitChanges: () => [false, "hook failed"] });
+		const session = fakeSession({ runner, git });
 
-		const logSpy = spyOn(console, "log").mockImplementation(() => {});
-		try {
-			const results = await runAfkLoop(
-				source,
-				"all",
-				() => "prompt",
-				(i) => i.title,
-				(i) => `#${i.number}: ${i.title}`,
-				runner,
-				"claude",
-				undefined,
-				git,
-			);
+		const results = await runAfkLoop(
+			source,
+			"all",
+			() => "prompt",
+			(i) => i.title,
+			(i) => `#${i.number}: ${i.title}`,
+			session,
+		);
 
-			// Only one result — session stopped
-			expect(results).toHaveLength(1);
-			expect(results[0].success).toBe(false);
-			expect(results[0].error).toBe("commit failed after retries");
-			expect(source.completed).toEqual([]);
-		} finally {
-			logSpy.mockRestore();
-		}
+		// Only one result — session stopped
+		expect(results).toHaveLength(1);
+		expect(results[0].success).toBe(false);
+		expect(results[0].error).toBe("commit failed after retries");
+		expect(source.completed).toEqual([]);
 	});
 
 	test("commit retry succeeds", async () => {
@@ -410,80 +402,241 @@ describe("runAfkLoop", () => {
 				return [true, "committed"];
 			},
 		});
+		const session = fakeSession({ runner, git });
 
-		const logSpy = spyOn(console, "log").mockImplementation(() => {});
-		try {
-			const results = await runAfkLoop(
-				source,
-				1,
-				() => "prompt",
-				(i) => i.title,
-				(i) => `#${i.number}: ${i.title}`,
-				runner,
-				"claude",
-				undefined,
-				git,
-			);
+		const results = await runAfkLoop(
+			source,
+			1,
+			() => "prompt",
+			(i) => i.title,
+			(i) => `#${i.number}: ${i.title}`,
+			session,
+		);
 
-			expect(results).toHaveLength(1);
-			expect(results[0].success).toBe(true);
-			expect(source.completed).toEqual([1]);
-		} finally {
-			logSpy.mockRestore();
-		}
+		expect(results).toHaveLength(1);
+		expect(results[0].success).toBe(true);
+		expect(source.completed).toEqual([1]);
 	});
 
-	test("runner name printed in header", async () => {
+	test("runner name printed in session header", async () => {
 		const source = new FakeSource([]);
 		const git = fakeGitOps();
+		const logger = new FakeLogger();
+		const session = fakeSession({ git, runnerName: "codex", logger });
 
-		const output: string[] = [];
-		const logSpy = spyOn(console, "log").mockImplementation((...args) => {
-			output.push(args.join(" "));
-		});
-		try {
-			await runAfkLoop(
-				source,
-				"all",
-				() => "",
-				() => "",
-				() => "",
-				new FakeRunner(),
-				"codex",
-				undefined,
-				git,
-			);
+		await runAfkLoop(
+			source,
+			"all",
+			() => "",
+			() => "",
+			() => "",
+			session,
+		);
 
-			expect(output.join("\n")).toContain("Runner: codex");
-		} finally {
-			logSpy.mockRestore();
-		}
+		expect(logger.messages.join("\n")).toContain("runner: codex");
 	});
 
 	test("all issues complete message when no issues", async () => {
 		const source = new FakeSource([]);
 		const git = fakeGitOps();
+		const logger = new FakeLogger();
+		const session = fakeSession({ git, logger });
 
-		const output: string[] = [];
-		const logSpy = spyOn(console, "log").mockImplementation((...args) => {
-			output.push(args.join(" "));
-		});
-		try {
-			await runAfkLoop(
-				source,
-				"all",
-				() => "",
-				() => "",
-				() => "",
-				new FakeRunner(),
-				"claude",
-				undefined,
-				git,
-			);
+		await runAfkLoop(
+			source,
+			"all",
+			() => "",
+			() => "",
+			() => "",
+			session,
+		);
 
-			expect(output.join("\n")).toContain("All issues complete!");
-		} finally {
-			logSpy.mockRestore();
-		}
+		expect(logger.messages.join("\n")).toContain("All issues complete!");
+	});
+
+	// -- Bug #75: retry-stop behavior -----------------------------------------
+
+	test("repeated failure on same issue stops session with --iterations all", async () => {
+		const source = new FakeSource([
+			{ number: 1, title: "Task 1" },
+			{ number: 2, title: "Task 2" },
+		]);
+		const failRunner: Runner = {
+			async run() {
+				return {
+					success: false,
+					exitCode: 1,
+					durationSeconds: 1.0,
+					error: "crash",
+				};
+			},
+		};
+		const logger = new FakeLogger();
+		const session = fakeSession({ runner: failRunner, logger });
+
+		const results = await runAfkLoop(
+			source,
+			"all",
+			() => "prompt",
+			(i) => i.title,
+			(i) => `#${i.number}: ${i.title}`,
+			session,
+		);
+
+		// Two results: attempt 1 and attempt 2 on issue 1, then stop
+		expect(results).toHaveLength(2);
+		expect(results[0].issueNumber).toBe(1);
+		expect(results[1].issueNumber).toBe(1);
+		expect(results.every((r) => !r.success)).toBe(true);
+		expect(source.completed).toEqual([]);
+		expect(logger.messages.join("\n")).toContain("failed twice consecutively");
+	});
+
+	test("failure then success on retry resets tracker and continues", async () => {
+		const source = new FakeSource([
+			{ number: 1, title: "Task 1" },
+			{ number: 2, title: "Task 2" },
+		]);
+		let callCount = 0;
+		const runner: Runner = {
+			async run() {
+				callCount++;
+				// First call fails (issue 1 attempt 1), rest succeed
+				return {
+					success: callCount > 1,
+					exitCode: callCount > 1 ? 0 : 1,
+					durationSeconds: 0.1,
+					error: callCount <= 1 ? "crash" : undefined,
+				};
+			},
+		};
+		const session = fakeSession({ runner });
+
+		const results = await runAfkLoop(
+			source,
+			"all",
+			() => "prompt",
+			(i) => i.title,
+			(i) => `#${i.number}: ${i.title}`,
+			session,
+		);
+
+		// Issue 1 failed once, then succeeded on retry, then issue 2 succeeded
+		expect(results).toHaveLength(3);
+		expect(results[0]).toMatchObject({ issueNumber: 1, success: false });
+		expect(results[1]).toMatchObject({ issueNumber: 1, success: true });
+		expect(results[2]).toMatchObject({ issueNumber: 2, success: true });
+		expect(source.completed).toEqual([1, 2]);
+	});
+
+	test("with -i N, failures consume iterations normally", async () => {
+		const source = new FakeSource([
+			{ number: 1, title: "Task 1" },
+			{ number: 2, title: "Task 2" },
+		]);
+		const failRunner: Runner = {
+			async run() {
+				return {
+					success: false,
+					exitCode: 1,
+					durationSeconds: 0.1,
+					error: "crash",
+				};
+			},
+		};
+		const session = fakeSession({ runner: failRunner });
+
+		const results = await runAfkLoop(
+			source,
+			2,
+			() => "prompt",
+			(i) => i.title,
+			(i) => `#${i.number}: ${i.title}`,
+			session,
+		);
+
+		// 2 iterations consumed: attempt 1 and attempt 2 on issue 1
+		expect(results).toHaveLength(2);
+		expect(results[0].issueNumber).toBe(1);
+		expect(results[1].issueNumber).toBe(1);
+		expect(source.completed).toEqual([]);
+	});
+
+	test("no-changes repeated failure stops session", async () => {
+		const source = new FakeSource([
+			{ number: 1, title: "Task 1" },
+			{ number: 2, title: "Task 2" },
+		]);
+		const runner = new FakeRunner(true);
+		const git = fakeGitOps({ stageChanges: () => false });
+		const logger = new FakeLogger();
+		const session = fakeSession({ runner, git, logger });
+
+		const results = await runAfkLoop(
+			source,
+			"all",
+			() => "prompt",
+			(i) => i.title,
+			(i) => `#${i.number}: ${i.title}`,
+			session,
+		);
+
+		expect(results).toHaveLength(2);
+		expect(results[0]).toMatchObject({ issueNumber: 1, success: false });
+		expect(results[1]).toMatchObject({ issueNumber: 1, success: false });
+		expect(logger.messages.join("\n")).toContain("failed twice consecutively");
+	});
+
+	// -- Logging tests --------------------------------------------------------
+
+	test("logs retry indicator on second attempt", async () => {
+		const source = new FakeSource([{ number: 1, title: "Task 1" }]);
+		let callCount = 0;
+		const runner: Runner = {
+			async run() {
+				callCount++;
+				return {
+					success: callCount > 1,
+					exitCode: callCount > 1 ? 0 : 1,
+					durationSeconds: 0.1,
+					error: callCount <= 1 ? "crash" : undefined,
+				};
+			},
+		};
+		const logger = new FakeLogger();
+		const session = fakeSession({ runner, logger });
+
+		await runAfkLoop(
+			source,
+			"all",
+			() => "prompt",
+			(i) => i.title,
+			(i) => `#${i.number}: ${i.title}`,
+			session,
+		);
+
+		expect(logger.messages.join("\n")).toContain("Retrying issue 1 (attempt 2 of 2)");
+	});
+
+	test("logs runner start, staging, and committing", async () => {
+		const source = new FakeSource([{ number: 1, title: "Task 1" }]);
+		const runner = new FakeRunner(true);
+		const logger = new FakeLogger();
+		const session = fakeSession({ runner, logger });
+
+		await runAfkLoop(
+			source,
+			1,
+			() => "prompt",
+			(i) => i.title,
+			(i) => `#${i.number}: ${i.title}`,
+			session,
+		);
+
+		const joined = logger.messages.join("\n");
+		expect(joined).toContain("Running claude...");
+		expect(joined).toContain("Staging changes...");
+		expect(joined).toContain("Committing...");
+		expect(joined).toContain("committed and completed");
 	});
 });

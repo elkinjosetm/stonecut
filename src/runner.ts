@@ -15,7 +15,15 @@ import {
 	snapshotWorkingTree as realSnapshotWorkingTree,
 	stageChanges as realStageChanges,
 } from "./git";
-import type { GitOps, IterationResult, Runner, Source, WorkingTreeSnapshot } from "./types";
+import type {
+	GitOps,
+	IterationResult,
+	LogWriter,
+	Runner,
+	Session,
+	Source,
+	WorkingTreeSnapshot,
+} from "./types";
 
 /** Default git operations that call the real git module. */
 export const defaultGitOps: GitOps = {
@@ -23,6 +31,12 @@ export const defaultGitOps: GitOps = {
 	stageChanges: realStageChanges,
 	commitChanges: realCommitChanges,
 	revertUncommitted: realRevertUncommitted,
+};
+
+/** Console-only logger for backward compatibility. */
+export const consoleLogger: LogWriter = {
+	log: (message: string) => console.log(message),
+	close: () => {},
 };
 
 /**
@@ -86,9 +100,13 @@ export async function commitIssue(
 /**
  * Run the autonomous loop over issues from any source.
  *
- * Uses the provided Runner instance to execute each issue's prompt.
+ * Uses the provided Session to execute each issue's prompt.
  * After each successful run, Forge stages and commits the changes.
  * Works with both LocalSource and GitHubSource.
+ *
+ * A failing issue is retried once (2 total attempts). If it fails
+ * a second time, the session stops — issues are sequential vertical
+ * slices, so skipping is not viable.
  */
 export async function runAfkLoop<T extends { number: number }>(
 	source: Source<T>,
@@ -96,16 +114,17 @@ export async function runAfkLoop<T extends { number: number }>(
 	renderPrompt: (issue: T) => string | Promise<string>,
 	displayName: (issue: T) => string,
 	commitMessage: (issue: T) => string,
-	runner: Runner,
-	runnerName: string = "claude",
+	session: Session,
 	onNoChanges?: (issue: T, output: string | undefined) => void,
-	git: GitOps = defaultGitOps,
 ): Promise<IterationResult[]> {
-	console.log(`Runner: ${runnerName}`);
-	console.log("");
+	const { logger, git, runner, runnerName } = session;
+
+	logger.log(`Session started — runner: ${runnerName}, iterations: ${iterations}`);
+	logger.log("");
 	const results: IterationResult[] = [];
 	const sessionStart = performance.now();
 	let iteration = 0;
+	let lastFailedIssueNumber: number | null = null;
 
 	while (true) {
 		// Check iteration limit
@@ -116,7 +135,7 @@ export async function runAfkLoop<T extends { number: number }>(
 		const issue = await source.getNextIssue();
 		if (issue === null) {
 			if (iteration === 0) {
-				console.log("All issues complete!");
+				logger.log("All issues complete!");
 			}
 			break;
 		}
@@ -124,22 +143,32 @@ export async function runAfkLoop<T extends { number: number }>(
 		iteration++;
 		const name = displayName(issue);
 		const [remaining, total] = await source.getRemainingCount();
-		console.log(`--- Iteration ${iteration} ---`);
-		console.log(`Issue ${issue.number}: ${name}`);
-		console.log(`Remaining: ${remaining}/${total}`);
-		console.log("");
+
+		// Detect retry
+		if (lastFailedIssueNumber === issue.number) {
+			logger.log(
+				`--- Iteration ${iteration} --- [Issue ${issue.number}: ${name}] (${remaining}/${total} remaining)`,
+			);
+			logger.log(`Retrying issue ${issue.number} (attempt 2 of 2)`);
+		} else {
+			logger.log(
+				`--- Iteration ${iteration} --- [Issue ${issue.number}: ${name}] (${remaining}/${total} remaining)`,
+			);
+		}
 
 		// Snapshot working tree before runner
 		const snapshot = git.snapshotWorkingTree();
 
+		logger.log(`Running ${runnerName}...`);
 		const prompt = await renderPrompt(issue);
 		const runResult = await runner.run(prompt);
 
 		if (!runResult.success) {
+			logger.log(`Reverted working tree to pre-run snapshot.`);
 			git.revertUncommitted(snapshot);
 			const errorDetail = runResult.error || "unknown error";
-			console.log(
-				`Issue ${issue.number}: failed — ${errorDetail} ` +
+			logger.log(
+				`Issue ${issue.number}: runner failed — ${errorDetail} ` +
 					`(${fmtTime(runResult.durationSeconds)})`,
 			);
 			results.push({
@@ -149,17 +178,23 @@ export async function runAfkLoop<T extends { number: number }>(
 				elapsedSeconds: runResult.durationSeconds,
 				error: runResult.error,
 			});
-			console.log("");
+
+			if (lastFailedIssueNumber === issue.number) {
+				logger.log(`Issue ${issue.number}: failed twice consecutively — stopping session.`);
+				logger.log("");
+				break;
+			}
+			lastFailedIssueNumber = issue.number;
+			logger.log("");
 			continue;
 		}
 
 		// Runner succeeded — check for changes
+		logger.log(`Staging changes...`);
 		const hasChanges = git.stageChanges(snapshot);
 		if (!hasChanges) {
 			const errorMsg = "runner produced no changes";
-			console.log(
-				`Issue ${issue.number}: failed — ${errorMsg} ` + `(${fmtTime(runResult.durationSeconds)})`,
-			);
+			logger.log(`Issue ${issue.number}: ${errorMsg} ` + `(${fmtTime(runResult.durationSeconds)})`);
 			if (onNoChanges) {
 				onNoChanges(issue, runResult.output);
 			}
@@ -170,17 +205,25 @@ export async function runAfkLoop<T extends { number: number }>(
 				elapsedSeconds: runResult.durationSeconds,
 				error: errorMsg,
 			});
-			console.log("");
+
+			if (lastFailedIssueNumber === issue.number) {
+				logger.log(`Issue ${issue.number}: failed twice consecutively — stopping session.`);
+				logger.log("");
+				break;
+			}
+			lastFailedIssueNumber = issue.number;
+			logger.log("");
 			continue;
 		}
 
 		// Commit the changes
+		logger.log(`Committing...`);
 		const msg = commitMessage(issue);
 		const [committed] = await commitIssue(runner, msg, snapshot, 3, git);
 
 		if (!committed) {
-			console.log(
-				`Issue ${issue.number}: failed — commit failed after retries ` +
+			logger.log(
+				`Issue ${issue.number}: commit failed after retries ` +
 					`(${fmtTime(runResult.durationSeconds)})`,
 			);
 			git.revertUncommitted(snapshot);
@@ -191,15 +234,17 @@ export async function runAfkLoop<T extends { number: number }>(
 				elapsedSeconds: runResult.durationSeconds,
 				error: "commit failed after retries",
 			});
-			// Stop the entire session
-			console.log("Stopping session: unable to commit.");
-			console.log("");
+			// Commit failures always stop the session immediately
+			logger.log("Stopping session: unable to commit.");
+			logger.log("");
 			break;
 		}
 
 		// Commit succeeded — mark issue complete
 		await source.completeIssue(issue);
-		console.log(`Issue ${issue.number}: completed ` + `(${fmtTime(runResult.durationSeconds)})`);
+		logger.log(
+			`Issue ${issue.number}: committed and completed ` + `(${fmtTime(runResult.durationSeconds)})`,
+		);
 		results.push({
 			issueNumber: issue.number,
 			issueFilename: name,
@@ -207,12 +252,13 @@ export async function runAfkLoop<T extends { number: number }>(
 			elapsedSeconds: runResult.durationSeconds,
 		});
 
-		console.log("");
+		lastFailedIssueNumber = null;
+		logger.log("");
 	}
 
 	// Session summary
 	const totalElapsed = (performance.now() - sessionStart) / 1000;
-	printSummary(results, totalElapsed);
+	printSummary(results, totalElapsed, logger);
 	return results;
 }
 
@@ -227,22 +273,26 @@ export function fmtTime(seconds: number): string {
 }
 
 /** Print a summary of the afk session. */
-export function printSummary(results: IterationResult[], totalSeconds: number): void {
+export function printSummary(
+	results: IterationResult[],
+	totalSeconds: number,
+	logger: LogWriter = consoleLogger,
+): void {
 	if (results.length === 0) {
 		return;
 	}
 
-	console.log("=== Session Summary ===");
+	logger.log("=== Session Summary ===");
 	const succeeded = results.filter((r) => r.success).length;
 	const failed = results.filter((r) => !r.success).length;
 
 	for (const r of results) {
 		const status = r.success ? "completed" : "failed";
 		const elapsed = fmtTime(r.elapsedSeconds);
-		console.log(`  Issue ${r.issueNumber} (${r.issueFilename}): ${status} (${elapsed})`);
+		logger.log(`  Issue ${r.issueNumber} (${r.issueFilename}): ${status} (${elapsed})`);
 	}
 
-	console.log("");
-	console.log(`Total: ${results.length} issues — ${succeeded} completed, ${failed} failed`);
-	console.log(`Total time: ${fmtTime(totalSeconds)}`);
+	logger.log("");
+	logger.log(`Total: ${results.length} issues — ${succeeded} completed, ${failed} failed`);
+	logger.log(`Total time: ${fmtTime(totalSeconds)}`);
 }
