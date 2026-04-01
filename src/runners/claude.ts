@@ -6,7 +6,7 @@
  * human-readable messages.
  */
 
-import type { Runner, RunResult } from "../types.js";
+import type { LogWriter, Runner, RunResult } from "../types.js";
 
 const ERROR_MESSAGES: Record<string, string> = {
 	error_max_turns: "max turns exceeded",
@@ -14,6 +14,11 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 export class ClaudeRunner implements Runner {
+	logEnvironment(logger: LogWriter): void {
+		const configDir = process.env.CLAUDE_CONFIG_DIR || "~/.claude (default)";
+		logger.log(`Claude config: ${configDir}`);
+	}
+
 	async run(prompt: string): Promise<RunResult> {
 		const start = performance.now();
 
