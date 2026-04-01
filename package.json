@@ -1,7 +1,25 @@
 {
   "name": "prd-forge",
   "version": "1.0.0",
+  "description": "CLI that drives PRD-driven development with agentic coding CLIs",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elkinjosetm/prd-forge.git"
+  },
+  "keywords": [
+    "cli",
+    "prd",
+    "agentic",
+    "claude-code",
+    "codex"
+  ],
   "type": "module",
+  "files": [
+    "src",
+    "LICENSE",
+    "README.md"
+  ],
   "bin": {
     "forge": "./src/cli.ts"
   },
