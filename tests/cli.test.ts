@@ -113,7 +113,7 @@ describe("run command routing", () => {
 			const source = validateRunSource(opts.local, opts.github);
 			const iterations = parseIterations(opts.iterations);
 			if (source.kind === "local") {
-				await localSpy(source.name, iterations, opts.runner);
+				await localSpy(source.name, iterations, opts.runner ?? "claude");
 			}
 		});
 
@@ -132,7 +132,7 @@ describe("run command routing", () => {
 			const source = validateRunSource(opts.local, opts.github);
 			const iterations = parseIterations(opts.iterations);
 			if (source.kind === "github") {
-				await githubSpy(source.number, iterations, opts.runner);
+				await githubSpy(source.number, iterations, opts.runner ?? "claude");
 			}
 		});
 
@@ -142,7 +142,7 @@ describe("run command routing", () => {
 		githubSpy.mockRestore();
 	});
 
-	test("runner flag defaults to claude", async () => {
+	test("runner defaults to claude when no flag and no config", async () => {
 		const localSpy = spyOn(await import("../src/cli"), "runLocal").mockResolvedValue(undefined);
 
 		const program = buildProgram();
@@ -151,7 +151,7 @@ describe("run command routing", () => {
 			const source = validateRunSource(opts.local, opts.github);
 			const iterations = parseIterations(opts.iterations);
 			if (source.kind === "local") {
-				await localSpy(source.name, iterations, opts.runner);
+				await localSpy(source.name, iterations, opts.runner ?? "claude");
 			}
 		});
 
@@ -170,7 +170,7 @@ describe("run command routing", () => {
 			const source = validateRunSource(opts.local, opts.github);
 			const iterations = parseIterations(opts.iterations);
 			if (source.kind === "local") {
-				await localSpy(source.name, iterations, opts.runner);
+				await localSpy(source.name, iterations, opts.runner ?? "claude");
 			}
 		});
 
@@ -1148,6 +1148,369 @@ describe("wizard flow branch/base prompting", () => {
 		selectMock.mockRestore();
 		textMock.mockRestore();
 		githubSpy.mockRestore();
+		defaultBranchMock.mockRestore();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Bare stonecut (no subcommand) routes to run
+// ---------------------------------------------------------------------------
+
+describe("bare stonecut entry point", () => {
+	test("no subcommand routes to run wizard", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+		const gitMod = await import("../src/git");
+
+		const selectMock = spyOn(clack, "select").mockResolvedValue("local" as never);
+		// Calls: source name, iterations, branch, baseBranch
+		const textMock = spyOn(clack, "text")
+			.mockResolvedValueOnce("my-spec" as never)
+			.mockResolvedValueOnce("all" as never)
+			.mockResolvedValueOnce("stonecut/my-spec" as never)
+			.mockResolvedValueOnce("main" as never);
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+		const defaultBranchMock = spyOn(gitMod, "defaultBranch").mockReturnValue("main");
+
+		const program = buildProgram();
+		// No subcommand — bare "stonecut"
+		await program.parseAsync(["node", "stonecut"]);
+
+		expect(selectMock).toHaveBeenCalled();
+		expect(localSpy).toHaveBeenCalled();
+
+		selectMock.mockRestore();
+		textMock.mockRestore();
+		localSpy.mockRestore();
+		defaultBranchMock.mockRestore();
+	});
+
+	test("--help still shows all commands", async () => {
+		const program = buildProgram();
+		program.exitOverride();
+
+		let output = "";
+		program.configureOutput({ writeOut: (str) => (output = str) });
+
+		try {
+			await program.parseAsync(["node", "stonecut", "--help"]);
+		} catch {
+			// Commander throws on exit after --help
+		}
+
+		expect(output).toContain("run");
+		expect(output).toContain("init");
+		expect(output).toContain("setup-skills");
+		expect(output).toContain("remove-skills");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Wizard config defaults integration
+// ---------------------------------------------------------------------------
+
+describe("wizard config defaults", () => {
+	test("uses branchPrefix from config for local source", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+		const gitMod = await import("../src/git");
+		const configMod = await import("../src/config");
+
+		const configSpy = spyOn(configMod, "loadConfig").mockReturnValue({
+			branchPrefix: "feat/stonecut/",
+		});
+		const textMock = spyOn(clack, "text")
+			.mockResolvedValueOnce("all" as never)
+			.mockResolvedValueOnce("feat/stonecut/my-spec" as never)
+			.mockResolvedValueOnce("main" as never);
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+		const defaultBranchMock = spyOn(gitMod, "defaultBranch").mockReturnValue("main");
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run", "--local", "my-spec"]);
+
+		const branchCall = textMock.mock.calls.find(
+			(call) => (call[0] as { message: string }).message === "Branch name:",
+		);
+		expect(branchCall).toBeDefined();
+		expect((branchCall![0] as { defaultValue: string }).defaultValue).toBe("feat/stonecut/my-spec");
+
+		configSpy.mockRestore();
+		textMock.mockRestore();
+		localSpy.mockRestore();
+		defaultBranchMock.mockRestore();
+	});
+
+	test("uses branchPrefix from config for github source", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+		const gitMod = await import("../src/git");
+		const configMod = await import("../src/config");
+
+		const configSpy = spyOn(configMod, "loadConfig").mockReturnValue({
+			branchPrefix: "feat/stonecut/",
+		});
+		const selectMock = spyOn(clack, "select").mockResolvedValue("github" as never);
+		const textMock = spyOn(clack, "text").mockResolvedValue("42" as never);
+		const githubSpy = spyOn(cliMod, "runGitHub").mockResolvedValue(undefined);
+		const defaultBranchMock = spyOn(gitMod, "defaultBranch").mockReturnValue("main");
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run", "-i", "all"]);
+
+		const branchCall = textMock.mock.calls.find(
+			(call) => (call[0] as { message: string }).message === "Branch name:",
+		);
+		expect(branchCall).toBeDefined();
+		expect((branchCall![0] as { defaultValue: string }).defaultValue).toBe(
+			"feat/stonecut/issue-42",
+		);
+
+		configSpy.mockRestore();
+		selectMock.mockRestore();
+		textMock.mockRestore();
+		githubSpy.mockRestore();
+		defaultBranchMock.mockRestore();
+	});
+
+	test("uses baseBranch from config as default", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+		const gitMod = await import("../src/git");
+		const configMod = await import("../src/config");
+
+		const configSpy = spyOn(configMod, "loadConfig").mockReturnValue({
+			baseBranch: "develop",
+		});
+		const textMock = spyOn(clack, "text")
+			.mockResolvedValueOnce("all" as never)
+			.mockResolvedValueOnce("stonecut/my-spec" as never)
+			.mockResolvedValueOnce("develop" as never);
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+		const defaultBranchMock = spyOn(gitMod, "defaultBranch").mockReturnValue("main");
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run", "--local", "my-spec"]);
+
+		const baseBranchCall = textMock.mock.calls.find(
+			(call) => (call[0] as { message: string }).message === "Base branch / PR target:",
+		);
+		expect(baseBranchCall).toBeDefined();
+		expect((baseBranchCall![0] as { defaultValue: string }).defaultValue).toBe("develop");
+		// defaultBranch() should NOT have been called since config provides baseBranch
+		expect(defaultBranchMock).not.toHaveBeenCalled();
+
+		configSpy.mockRestore();
+		textMock.mockRestore();
+		localSpy.mockRestore();
+		defaultBranchMock.mockRestore();
+	});
+
+	test("uses runner from config when no --runner flag", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+		const gitMod = await import("../src/git");
+		const configMod = await import("../src/config");
+
+		const configSpy = spyOn(configMod, "loadConfig").mockReturnValue({
+			runner: "codex",
+		});
+		const textMock = spyOn(clack, "text")
+			.mockResolvedValueOnce("all" as never)
+			.mockResolvedValueOnce("stonecut/my-spec" as never)
+			.mockResolvedValueOnce("main" as never);
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+		const defaultBranchMock = spyOn(gitMod, "defaultBranch").mockReturnValue("main");
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run", "--local", "my-spec"]);
+
+		// Runner should be "codex" from config
+		expect(localSpy).toHaveBeenCalledWith("my-spec", "all", "codex", expect.anything());
+
+		configSpy.mockRestore();
+		textMock.mockRestore();
+		localSpy.mockRestore();
+		defaultBranchMock.mockRestore();
+	});
+
+	test("--runner flag overrides config runner", async () => {
+		const cliMod = await import("../src/cli");
+		const configMod = await import("../src/config");
+
+		const configSpy = spyOn(configMod, "loadConfig").mockReturnValue({
+			runner: "codex",
+		});
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+
+		const program = buildProgram();
+		await program.parseAsync([
+			"node",
+			"stonecut",
+			"run",
+			"--local",
+			"spec",
+			"-i",
+			"1",
+			"--runner",
+			"claude",
+		]);
+
+		// Explicit flag takes precedence over config
+		expect(localSpy).toHaveBeenCalledWith("spec", 1, "claude", undefined);
+
+		configSpy.mockRestore();
+		localSpy.mockRestore();
+	});
+
+	test("falls back to hardcoded defaults when config is absent", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+		const gitMod = await import("../src/git");
+		const configMod = await import("../src/config");
+
+		const configSpy = spyOn(configMod, "loadConfig").mockReturnValue(null);
+		const textMock = spyOn(clack, "text")
+			.mockResolvedValueOnce("all" as never)
+			.mockResolvedValueOnce("stonecut/my-spec" as never)
+			.mockResolvedValueOnce("main" as never);
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+		const defaultBranchMock = spyOn(gitMod, "defaultBranch").mockReturnValue("main");
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run", "--local", "my-spec"]);
+
+		// Branch uses default "stonecut/" prefix
+		const branchCall = textMock.mock.calls.find(
+			(call) => (call[0] as { message: string }).message === "Branch name:",
+		);
+		expect(branchCall).toBeDefined();
+		expect((branchCall![0] as { defaultValue: string }).defaultValue).toBe("stonecut/my-spec");
+
+		// Base branch falls back to defaultBranch()
+		expect(defaultBranchMock).toHaveBeenCalled();
+
+		// Runner falls back to "claude"
+		expect(localSpy).toHaveBeenCalledWith("my-spec", "all", "claude", expect.anything());
+
+		configSpy.mockRestore();
+		textMock.mockRestore();
+		localSpy.mockRestore();
+		defaultBranchMock.mockRestore();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// First-run hint when .stonecut/ missing
+// ---------------------------------------------------------------------------
+
+describe("first-run hint", () => {
+	test("shows hint when .stonecut/ does not exist", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+		const gitMod = await import("../src/git");
+		const configMod = await import("../src/config");
+		const fs = await import("fs");
+
+		const configSpy = spyOn(configMod, "loadConfig").mockReturnValue(null);
+		const existsSpy = spyOn(fs, "existsSync").mockReturnValue(false);
+		const consoleSpy = spyOn(console, "log").mockImplementation(() => {});
+		const selectMock = spyOn(clack, "select").mockResolvedValue("local" as never);
+		// Calls: source name, iterations, branch, baseBranch
+		const textMock = spyOn(clack, "text")
+			.mockResolvedValueOnce("my-spec" as never)
+			.mockResolvedValueOnce("all" as never)
+			.mockResolvedValueOnce("stonecut/my-spec" as never)
+			.mockResolvedValueOnce("main" as never);
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+		const defaultBranchMock = spyOn(gitMod, "defaultBranch").mockReturnValue("main");
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run"]);
+
+		const hintCall = consoleSpy.mock.calls.find(
+			(call) => typeof call[0] === "string" && call[0].includes("stonecut init"),
+		);
+		expect(hintCall).toBeDefined();
+
+		configSpy.mockRestore();
+		existsSpy.mockRestore();
+		consoleSpy.mockRestore();
+		selectMock.mockRestore();
+		textMock.mockRestore();
+		localSpy.mockRestore();
+		defaultBranchMock.mockRestore();
+	});
+
+	test("does not show hint when .stonecut/ exists", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+		const gitMod = await import("../src/git");
+		const configMod = await import("../src/config");
+		const fs = await import("fs");
+
+		const configSpy = spyOn(configMod, "loadConfig").mockReturnValue(null);
+		const existsSpy = spyOn(fs, "existsSync").mockReturnValue(true);
+		const consoleSpy = spyOn(console, "log").mockImplementation(() => {});
+		const selectMock = spyOn(clack, "select").mockResolvedValue("local" as never);
+		// Calls: source name, iterations, branch, baseBranch
+		const textMock = spyOn(clack, "text")
+			.mockResolvedValueOnce("my-spec" as never)
+			.mockResolvedValueOnce("all" as never)
+			.mockResolvedValueOnce("stonecut/my-spec" as never)
+			.mockResolvedValueOnce("main" as never);
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+		const defaultBranchMock = spyOn(gitMod, "defaultBranch").mockReturnValue("main");
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run"]);
+
+		const hintCall = consoleSpy.mock.calls.find(
+			(call) => typeof call[0] === "string" && call[0].includes("stonecut init"),
+		);
+		expect(hintCall).toBeUndefined();
+
+		configSpy.mockRestore();
+		existsSpy.mockRestore();
+		consoleSpy.mockRestore();
+		selectMock.mockRestore();
+		textMock.mockRestore();
+		localSpy.mockRestore();
+		defaultBranchMock.mockRestore();
+	});
+
+	test("hint does not block execution", async () => {
+		const cliMod = await import("../src/cli");
+		const gitMod = await import("../src/git");
+		const configMod = await import("../src/config");
+		const clack = await import("@clack/prompts");
+		const fs = await import("fs");
+
+		const configSpy = spyOn(configMod, "loadConfig").mockReturnValue(null);
+		const existsSpy = spyOn(fs, "existsSync").mockReturnValue(false);
+		spyOn(console, "log").mockImplementation(() => {});
+		const selectMock = spyOn(clack, "select").mockResolvedValue("local" as never);
+		// Calls: source name, iterations, branch, baseBranch
+		const textMock = spyOn(clack, "text")
+			.mockResolvedValueOnce("my-spec" as never)
+			.mockResolvedValueOnce("all" as never)
+			.mockResolvedValueOnce("stonecut/my-spec" as never)
+			.mockResolvedValueOnce("main" as never);
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+		const defaultBranchMock = spyOn(gitMod, "defaultBranch").mockReturnValue("main");
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run"]);
+
+		// Even with hint shown, execution continues to runLocal
+		expect(localSpy).toHaveBeenCalled();
+
+		configSpy.mockRestore();
+		existsSpy.mockRestore();
+		(console.log as ReturnType<typeof mock>).mockRestore?.();
+		selectMock.mockRestore();
+		textMock.mockRestore();
+		localSpy.mockRestore();
 		defaultBranchMock.mockRestore();
 	});
 });
