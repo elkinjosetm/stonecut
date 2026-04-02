@@ -387,6 +387,132 @@ describe("run command source prompting", () => {
 });
 
 // ---------------------------------------------------------------------------
+// run command iterations prompting
+// ---------------------------------------------------------------------------
+
+describe("run command iterations prompting", () => {
+	test("no -i flag prompts for iterations with default 'all'", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+
+		const selectMock = spyOn(clack, "select").mockResolvedValue("local" as never);
+		// First text call: source name, second: iterations
+		const textMock = spyOn(clack, "text").mockResolvedValue("all" as never);
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run"]);
+
+		// text should have been called for: source name + iterations (and possibly source prompt)
+		const iterationsCall = textMock.mock.calls.find(
+			(call) => (call[0] as { message: string }).message === "Iterations:",
+		);
+		expect(iterationsCall).toBeDefined();
+		expect((iterationsCall![0] as { defaultValue: string }).defaultValue).toBe("all");
+		expect(localSpy).toHaveBeenCalled();
+
+		selectMock.mockRestore();
+		textMock.mockRestore();
+		localSpy.mockRestore();
+	});
+
+	test("--local without -i prompts for iterations", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+
+		// Only the iterations prompt should fire (source is provided via --local)
+		const textMock = spyOn(clack, "text").mockResolvedValue("5" as never);
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run", "--local", "foo"]);
+
+		const iterationsCall = textMock.mock.calls.find(
+			(call) => (call[0] as { message: string }).message === "Iterations:",
+		);
+		expect(iterationsCall).toBeDefined();
+		expect(localSpy).toHaveBeenCalledWith("foo", 5, "claude");
+
+		textMock.mockRestore();
+		localSpy.mockRestore();
+	});
+
+	test("--local with -i 5 skips iterations prompt", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+
+		const textMock = spyOn(clack, "text");
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run", "--local", "foo", "-i", "5"]);
+
+		const iterationsCall = textMock.mock.calls.find(
+			(call) => (call[0] as { message: string }).message === "Iterations:",
+		);
+		expect(iterationsCall).toBeUndefined();
+		expect(localSpy).toHaveBeenCalledWith("foo", 5, "claude");
+
+		textMock.mockRestore();
+		localSpy.mockRestore();
+	});
+
+	test("--local with -i all skips iterations prompt", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+
+		const textMock = spyOn(clack, "text");
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run", "--local", "foo", "-i", "all"]);
+
+		const iterationsCall = textMock.mock.calls.find(
+			(call) => (call[0] as { message: string }).message === "Iterations:",
+		);
+		expect(iterationsCall).toBeUndefined();
+		expect(localSpy).toHaveBeenCalledWith("foo", "all", "claude");
+
+		textMock.mockRestore();
+		localSpy.mockRestore();
+	});
+
+	test("cancelling iterations prompt throws", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+
+		const cancelSymbol = Symbol("cancel");
+		const selectMock = spyOn(clack, "select").mockResolvedValue("local" as never);
+		const isCancelSpy = spyOn(clack, "isCancel");
+		isCancelSpy.mockReturnValueOnce(false); // select not cancelled
+		const textMock = spyOn(clack, "text")
+			.mockResolvedValueOnce("my-spec" as never) // source name
+			.mockResolvedValueOnce(cancelSymbol as never); // iterations cancelled
+		isCancelSpy.mockReturnValueOnce(false); // source text not cancelled
+		isCancelSpy.mockReturnValueOnce(true); // iterations cancelled
+
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+
+		const program = buildProgram();
+
+		let caught: Error | undefined;
+		try {
+			await program.parseAsync(["node", "stonecut", "run"]);
+		} catch (err) {
+			caught = err as Error;
+		}
+
+		expect(caught).toBeDefined();
+		expect(caught!.message).toContain("Cancelled.");
+
+		selectMock.mockRestore();
+		textMock.mockRestore();
+		isCancelSpy.mockRestore();
+		localSpy.mockRestore();
+	});
+});
+
+// ---------------------------------------------------------------------------
 // buildReport
 // ---------------------------------------------------------------------------
 

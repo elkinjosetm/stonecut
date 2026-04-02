@@ -348,12 +348,34 @@ export function buildProgram(): Command {
 		.description("Execute issues from a local PRD or GitHub PRD.")
 		.option("--local <name>", "Local PRD name (.stonecut/<name>/)")
 		.option("--github <number>", "GitHub PRD issue number", parseGitHubIssueNumber)
-		.requiredOption("-i, --iterations <value>", "Number of issues to process, or 'all'")
+		.option("-i, --iterations <value>", "Number of issues to process, or 'all'")
 		.option("--runner <name>", "Agentic CLI runner (claude, codex)", "claude")
 		.action(async (opts) => {
 			const validated = validateRunSource(opts.local, opts.github);
 			const source = validated.kind === "prompt" ? await promptForSource() : validated;
-			const iterations = parseIterations(opts.iterations);
+
+			let iterations: number | "all";
+			if (opts.iterations !== undefined) {
+				iterations = parseIterations(opts.iterations);
+			} else {
+				const iterationsInput = await clack.text({
+					message: "Iterations:",
+					defaultValue: "all",
+					placeholder: "all",
+					validate: (value) => {
+						try {
+							parseIterations(value);
+						} catch {
+							return "Must be a positive integer or 'all'.";
+						}
+					},
+				});
+				if (clack.isCancel(iterationsInput)) {
+					throw new Error("Cancelled.");
+				}
+				iterations = parseIterations(iterationsInput);
+			}
+
 			const runnerName: string = opts.runner;
 
 			if (source.kind === "local") {
