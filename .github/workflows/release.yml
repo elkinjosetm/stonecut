@@ -52,8 +52,19 @@ jobs:
         if: steps.check_release.outputs.exists == 'false'
         run: bun install --frozen-lockfile
 
+      # setup-node with registry-url writes an .npmrc containing
+      # _authToken=${NODE_AUTH_TOKEN} and exports NODE_AUTH_TOKEN with a
+      # placeholder value (XXXXX-XXXXX-XXXXX-XXXXX).  That placeholder
+      # causes npm to attempt token auth instead of the OIDC credential
+      # exchange required by trusted publishers, producing a 404 error.
+      # Stripping the _authToken line from .npmrc lets npm fall through
+      # to OIDC.  We also set NODE_AUTH_TOKEN to empty to override the
+      # exported placeholder.
       - name: Publish to npm
         if: steps.check_release.outputs.exists == 'false'
         env:
           HUSKY: 0
-        run: npm publish --provenance --access public
+          NODE_AUTH_TOKEN: ""
+        run: |
+          sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG"
+          npm publish --provenance --access public

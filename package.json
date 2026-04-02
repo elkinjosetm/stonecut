@@ -39,7 +39,7 @@
       "eslint",
       "prettier --check"
     ],
-    "*.{json,md}": "prettier --check"
+    "*.{json,md,yml,yaml,css,html}": "prettier --check"
   },
   "devDependencies": {
     "@types/bun": "^1.2.9",
