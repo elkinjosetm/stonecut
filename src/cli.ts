@@ -25,6 +25,9 @@ import { Logger } from "./logger";
 import { defaultGitOps, runAfkLoop } from "./runner";
 import { getRunner } from "./runners/index";
 import { setupSkills, removeSkills } from "./skills";
+import { init } from "./init";
+import { loadConfig } from "./config";
+import { existsSync } from "fs";
 import type { GitHubIssue, Issue, IterationResult, Session } from "./types";
 
 const require = createRequire(import.meta.url);
@@ -357,17 +360,21 @@ export function buildProgram(): Command {
 
 	program
 		.name("stonecut")
-		.description("Stonecut — execute PRD-driven development workflows using agentic coding CLIs.")
+		.description(
+			"Stonecut — PRD-driven development with agentic coding CLIs.\n\nRun bare `stonecut` to start the interactive run wizard (the most common workflow).\nUse `stonecut <command>` for other operations.",
+		)
 		.version(`stonecut ${version}`, "-V, --version");
 
 	program
-		.command("run")
+		.command("run", { isDefault: true })
 		.description("Execute issues from a local PRD or GitHub PRD.")
 		.option("--local <name>", "Local PRD name (.stonecut/<name>/)")
 		.option("--github <number>", "GitHub PRD issue number", parseGitHubIssueNumber)
 		.option("-i, --iterations <value>", "Number of issues to process, or 'all'")
-		.option("--runner <name>", "Agentic CLI runner (claude, codex)", "claude")
+		.option("--runner <name>", "Agentic CLI runner (claude, codex)")
 		.action(async (opts) => {
+			const config = loadConfig();
+
 			const validated = validateRunSource(opts.local, opts.github);
 			const source = validated.kind === "prompt" ? await promptForSource() : validated;
 
@@ -398,10 +405,15 @@ export function buildProgram(): Command {
 			let prefilled: { branch?: string; baseBranch?: string } | undefined;
 
 			if (isWizard) {
+				if (!existsSync(".stonecut")) {
+					console.log("Hint: run `stonecut init` to set up project config and gitignore.\n");
+				}
+
+				const branchPrefix = config?.branchPrefix ?? "stonecut/";
 				const suggestedBranch =
 					source.kind === "local"
-						? `stonecut/${slugifyBranchComponent(source.name) || "spec"}`
-						: `stonecut/issue-${source.number}`;
+						? `${branchPrefix}${slugifyBranchComponent(source.name) || "spec"}`
+						: `${branchPrefix}issue-${source.number}`;
 
 				const branch = await clack.text({
 					message: "Branch name:",
@@ -412,7 +424,7 @@ export function buildProgram(): Command {
 					throw new Error("Cancelled.");
 				}
 
-				const detectedDefault = defaultBranch();
+				const detectedDefault = config?.baseBranch ?? defaultBranch();
 				const baseBranch = await clack.text({
 					message: "Base branch / PR target:",
 					defaultValue: detectedDefault,
@@ -425,13 +437,21 @@ export function buildProgram(): Command {
 				prefilled = { branch, baseBranch };
 			}
 
-			const runnerName: string = opts.runner;
+			const runnerName: string = opts.runner ?? config?.runner ?? "claude";
 
 			if (source.kind === "local") {
 				await runLocal(source.name, iterations, runnerName, prefilled);
 			} else {
 				await runGitHub(source.number, iterations, runnerName, prefilled);
 			}
+		});
+
+	program
+		.command("init")
+		.description("Initialize a .stonecut/ directory with project config and gitignore.")
+		.action(() => {
+			init();
+			console.log("Created .stonecut/config.json and .stonecut/.gitignore");
 		});
 
 	program

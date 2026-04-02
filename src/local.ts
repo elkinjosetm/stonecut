@@ -3,6 +3,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync, appendFileSync, statSync } from "fs";
 import { join } from "path";
 import type { Issue, Source } from "./types";
+import { parseFrontmatter } from "./frontmatter";
 
 export class LocalSource implements Source<Issue> {
 	readonly name: string;
@@ -65,18 +66,20 @@ export class LocalSource implements Source<Issue> {
 	}
 
 	async getPrdContent(): Promise<string> {
-		return readFileSync(join(this.specDir, "prd.md"), "utf-8");
+		const raw = readFileSync(join(this.specDir, "prd.md"), "utf-8");
+		return parseFrontmatter(raw).body;
 	}
 
 	async getNextIssue(): Promise<Issue | null> {
 		const completed = this.readStatus();
 		for (const issue of this.allIssues()) {
 			if (!completed.has(issue.number)) {
+				const raw = readFileSync(issue.path, "utf-8");
 				return {
 					number: issue.number,
 					filename: issue.filename,
 					path: issue.path,
-					content: readFileSync(issue.path, "utf-8"),
+					content: parseFrontmatter(raw).body,
 				};
 			}
 		}

@@ -198,6 +198,77 @@ describe("Content reading", () => {
 	});
 });
 
+// --------------- Frontmatter integration ---------------
+
+describe("Frontmatter integration", () => {
+	beforeEach(() => {
+		tmpDir = mkdtempSync(join(tmpdir(), "stonecut-test-"));
+		origCwd = process.cwd();
+		process.chdir(tmpDir);
+	});
+
+	afterEach(() => {
+		process.chdir(origCwd);
+	});
+
+	test("strips frontmatter from issue content", async () => {
+		const specDir = join(tmpDir, ".stonecut", "fm");
+		const issuesDir = join(specDir, "issues");
+		mkdirSync(issuesDir, { recursive: true });
+		writeFileSync(join(specDir, "prd.md"), "# PRD\n");
+		writeFileSync(
+			join(issuesDir, "01-first.md"),
+			"---\nsource: github\nissue: 42\n---\n# Issue Body\nActual content.\n",
+		);
+
+		const source = new LocalSource("fm");
+		const issue = await source.getNextIssue();
+		expect(issue).not.toBeNull();
+		expect(issue!.content).toBe("# Issue Body\nActual content.\n");
+	});
+
+	test("plain markdown issues still work (no frontmatter)", async () => {
+		const specDir = join(tmpDir, ".stonecut", "plain");
+		const issuesDir = join(specDir, "issues");
+		mkdirSync(issuesDir, { recursive: true });
+		writeFileSync(join(specDir, "prd.md"), "# PRD\n");
+		writeFileSync(join(issuesDir, "01-plain.md"), "Just plain markdown.");
+
+		const source = new LocalSource("plain");
+		const issue = await source.getNextIssue();
+		expect(issue).not.toBeNull();
+		expect(issue!.content).toBe("Just plain markdown.");
+	});
+
+	test("strips frontmatter from issue content with CRLF", async () => {
+		const specDir = join(tmpDir, ".stonecut", "fm-crlf");
+		const issuesDir = join(specDir, "issues");
+		mkdirSync(issuesDir, { recursive: true });
+		writeFileSync(join(specDir, "prd.md"), "# PRD\r\n");
+		writeFileSync(
+			join(issuesDir, "01-first.md"),
+			"---\r\nsource: github\r\nissue: 42\r\n---\r\n# Issue Body\r\nActual content.\r\n",
+		);
+
+		const source = new LocalSource("fm-crlf");
+		const issue = await source.getNextIssue();
+		expect(issue).not.toBeNull();
+		expect(issue!.content).toBe("# Issue Body\r\nActual content.\r\n");
+	});
+
+	test("strips frontmatter from PRD content", async () => {
+		const specDir = join(tmpDir, ".stonecut", "fmprd");
+		const issuesDir = join(specDir, "issues");
+		mkdirSync(issuesDir, { recursive: true });
+		writeFileSync(join(specDir, "prd.md"), "---\ntitle: My PRD\n---\n# PRD Body\nRequirements.\n");
+		writeFileSync(join(issuesDir, "01-first.md"), "Issue content");
+
+		const source = new LocalSource("fmprd");
+		const content = await source.getPrdContent();
+		expect(content).toBe("# PRD Body\nRequirements.\n");
+	});
+});
+
 // --------------- Remaining count ---------------
 
 describe("Remaining count", () => {
