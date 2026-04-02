@@ -360,7 +360,9 @@ export function buildProgram(): Command {
 
 	program
 		.name("stonecut")
-		.description("Stonecut — execute PRD-driven development workflows using agentic coding CLIs.")
+		.description(
+			"Stonecut — PRD-driven development with agentic coding CLIs.\n\nRun bare `stonecut` to start the interactive run wizard (the most common workflow).\nUse `stonecut <command>` for other operations.",
+		)
 		.version(`stonecut ${version}`, "-V, --version");
 
 	program

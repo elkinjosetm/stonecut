@@ -9,7 +9,7 @@ Ideas can come from anywhere — Jira tickets, Slack threads, MCP servers, or ju
 1. **`/stonecut-interview`** — Stress-test the idea. Get grilled on the plan until it's solid.
 2. **`/stonecut-prd`** — Turn the validated idea into a PRD (local file or GitHub issue).
 3. **`/stonecut-issues`** — Break the PRD into independently-grabbable issues (local markdown files or GitHub sub-issues).
-4. **`stonecut run`** — Execute the issues sequentially with an agentic coding CLI.
+4. **`stonecut`** — Execute the issues sequentially with an agentic coding CLI.
 
 Steps 1–3 are Claude Code skills installed via `stonecut setup-skills`. Step 4 is the Stonecut CLI.
 
@@ -31,10 +31,11 @@ For projects using GitHub issues, we recommend tracking ideas with a `roadmap` l
 bun add -g stonecut
 ```
 
-This makes the `stonecut` command globally available. Then install the Claude Code skills:
+This makes the `stonecut` command globally available. Then initialize your project and install the Claude Code skills:
 
 ```sh
-stonecut setup-skills
+stonecut init          # scaffold .stonecut/ with config and gitignore
+stonecut setup-skills  # install Claude Code skills
 ```
 
 ### Install from source
@@ -68,26 +69,65 @@ bun test
 
 ## Usage
 
-Stonecut has one execution command (`run`) with two sources (`--local` for local PRDs, `--github` for GitHub PRDs). All execution is headless — Stonecut runs the issues autonomously and creates a PR when done.
+Running bare `stonecut` starts the interactive run wizard — the primary workflow for executing PRD issues. Use `stonecut --help` to discover all available commands.
 
-### `stonecut run` — Interactive wizard
+### `stonecut` — Interactive wizard
 
 When flags are omitted, Stonecut prompts for each missing parameter:
 
 ```sh
 # Full wizard — prompted for source, iterations, branch, and base branch
-stonecut run
+stonecut
 
 # Partial — only iterations, branch, and base are prompted
-stonecut run --local my-feature
+stonecut --local my-feature
 
 # Partial — only source, branch, and base are prompted
-stonecut run -i all
+stonecut -i all
 ```
+
+You can also use `stonecut run` explicitly — it's identical to bare `stonecut`.
 
 Flags provided via CLI skip the corresponding prompts. When all flags are given, the command runs without any prompts (the existing behavior).
 
-### `stonecut run --local` — Local PRDs
+If no `.stonecut/` directory exists, the wizard prints a hint suggesting `stonecut init`.
+
+### `stonecut init` — Project setup
+
+Scaffolds a `.stonecut/` directory with project-level configuration:
+
+```sh
+stonecut init
+```
+
+This creates:
+
+- **`.stonecut/config.json`** — Project defaults for the run wizard (see [Configuration](#configuration) below).
+- **`.stonecut/.gitignore`** — Ignores runtime artifacts (`logs/`, `status.json`, `progress.txt`) so only meaningful files (config, PRDs, issues) are committed.
+
+The command errors if `config.json` already exists, preventing accidental overwrites. To reconfigure, edit the file directly.
+
+### Configuration
+
+`.stonecut/config.json` controls wizard defaults. All fields are optional:
+
+```json
+{
+  "runner": "claude",
+  "baseBranch": "main",
+  "branchPrefix": "stonecut/"
+}
+```
+
+| Field          | Default       | Description                                                                     |
+| -------------- | ------------- | ------------------------------------------------------------------------------- |
+| `runner`       | `"claude"`    | Agentic CLI runner (`claude`, `codex`). Used when `--runner` is omitted.        |
+| `baseBranch`   | `"main"`      | Default PR target branch. Suggested in the wizard's base branch prompt.         |
+| `branchPrefix` | `"stonecut/"` | Prefix for suggested branch names (e.g. `feat/stonecut/` for team conventions). |
+
+When config is present, the wizard uses these as default values — you can hit enter through prompts for the common case. When config is absent, the current hardcoded defaults apply.
+
+### `stonecut --local` — Local PRDs
 
 ```sh
 # Run 5 issues, then push and create a PR
@@ -97,7 +137,7 @@ stonecut run --local my-feature -i 5
 stonecut run --local my-feature -i all
 ```
 
-### `stonecut run --github` — GitHub PRDs
+### `stonecut --github` — GitHub PRDs
 
 ```sh
 # Run 5 sub-issues
@@ -107,15 +147,25 @@ stonecut run --github 42 -i 5
 stonecut run --github 42 -i all
 ```
 
+### Commands
+
+| Command         | Description                                                            |
+| --------------- | ---------------------------------------------------------------------- |
+| _(bare)_        | Start the interactive run wizard (default command).                    |
+| `run`           | Alias for bare `stonecut` — execute issues from a local or GitHub PRD. |
+| `init`          | Scaffold `.stonecut/` directory with project config and gitignore.     |
+| `setup-skills`  | Install Stonecut skills as symlinks into `~/.claude/skills/`.          |
+| `remove-skills` | Remove Stonecut skill symlinks from `~/.claude/skills/`.               |
+
 ### Flags
 
-| Flag           | Short | Required | Description                                                        |
-| -------------- | ----- | -------- | ------------------------------------------------------------------ |
-| `--local`      | —     | No       | Local PRD name (`.stonecut/<name>/`). Prompted if omitted.         |
-| `--github`     | —     | No       | GitHub PRD issue number. Prompted if omitted.                      |
-| `--iterations` | `-i`  | No       | Positive integer or `all`. Prompted with default `all` if omitted. |
-| `--runner`     | —     | No       | Agentic CLI runner (`claude`, `codex`). Default: `claude`.         |
-| `--version`    | `-V`  | —        | Show version and exit.                                             |
+| Flag           | Short | Required | Description                                                              |
+| -------------- | ----- | -------- | ------------------------------------------------------------------------ |
+| `--local`      | —     | No       | Local PRD name (`.stonecut/<name>/`). Prompted if omitted.               |
+| `--github`     | —     | No       | GitHub PRD issue number. Prompted if omitted.                            |
+| `--iterations` | `-i`  | No       | Positive integer or `all`. Prompted with default `all` if omitted.       |
+| `--runner`     | —     | No       | Agentic CLI runner (`claude`, `codex`). Default from config or `claude`. |
+| `--version`    | `-V`  | —        | Show version and exit.                                                   |
 
 ### Pre-execution prompts
 
@@ -124,8 +174,8 @@ Before starting, Stonecut prompts for any missing parameters in order:
 1. **Source** — `--local` or `--github` (skipped when provided via flag)
 2. **Spec name / issue number** — free-text input for the chosen source (skipped when provided via flag)
 3. **Iterations** — number of issues to process, default `all` (skipped when `-i` provided)
-4. **Branch name** — suggests `stonecut/<slug>` based on the source
-5. **Base branch** — suggests the repository's default branch (usually `main`)
+4. **Branch name** — suggests `<branchPrefix><slug>` based on the source (prefix from config or `stonecut/`)
+5. **Base branch** — suggests the configured `baseBranch` or the repository's default branch (usually `main`)
 6. Creates or checks out the branch
 
 When all parameters are provided via flags, only the branch and base branch prompts appear (steps 4–5).
