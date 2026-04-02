@@ -66,15 +66,62 @@ export function parseGitHubIssueNumber(value: string): number {
 export function validateRunSource(
 	local: string | undefined,
 	github: number | undefined,
-): { kind: "local"; name: string } | { kind: "github"; number: number } {
+): { kind: "local"; name: string } | { kind: "github"; number: number } | { kind: "prompt" } {
 	if (local !== undefined && github !== undefined) {
 		throw new Error("Use exactly one of --local or --github.");
 	}
 	if (local === undefined && github === undefined) {
-		throw new Error("One of --local or --github is required.");
+		return { kind: "prompt" };
 	}
 	if (local !== undefined) return { kind: "local", name: local };
 	return { kind: "github", number: github! };
+}
+
+/**
+ * Prompt the user interactively for the source type and value.
+ * Returns a tagged tuple matching the shape of validateRunSource().
+ */
+export async function promptForSource(): Promise<
+	{ kind: "local"; name: string } | { kind: "github"; number: number }
+> {
+	const sourceType = await clack.select({
+		message: "Source type:",
+		options: [
+			{ value: "local", label: "Local PRD (.stonecut/<name>/)" },
+			{ value: "github", label: "GitHub PRD (issue number)" },
+		],
+	});
+
+	if (clack.isCancel(sourceType)) {
+		throw new Error("Cancelled.");
+	}
+
+	if (sourceType === "local") {
+		const name = await clack.text({
+			message: "Spec name:",
+			placeholder: "my-spec",
+			validate: (value) => {
+				if (!value.trim()) return "Spec name is required.";
+			},
+		});
+		if (clack.isCancel(name)) {
+			throw new Error("Cancelled.");
+		}
+		return { kind: "local", name };
+	}
+
+	const issueStr = await clack.text({
+		message: "GitHub issue number:",
+		placeholder: "42",
+		validate: (value) => {
+			const n = Number(value);
+			if (!Number.isInteger(n) || n <= 0) return "Must be a positive integer.";
+		},
+	});
+	if (clack.isCancel(issueStr)) {
+		throw new Error("Cancelled.");
+	}
+	return { kind: "github", number: Number(issueStr) };
 }
 
 // ---------------------------------------------------------------------------
@@ -304,7 +351,8 @@ export function buildProgram(): Command {
 		.requiredOption("-i, --iterations <value>", "Number of issues to process, or 'all'")
 		.option("--runner <name>", "Agentic CLI runner (claude, codex)", "claude")
 		.action(async (opts) => {
-			const source = validateRunSource(opts.local, opts.github);
+			const validated = validateRunSource(opts.local, opts.github);
+			const source = validated.kind === "prompt" ? await promptForSource() : validated;
 			const iterations = parseIterations(opts.iterations);
 			const runnerName: string = opts.runner;
 

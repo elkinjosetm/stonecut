@@ -9,6 +9,7 @@ import {
 	buildProgram,
 	parseIterations,
 	preExecution,
+	promptForSource,
 	pushAndMaybePr,
 	validateRunSource,
 } from "../src/cli";
@@ -63,10 +64,9 @@ describe("validateRunSource", () => {
 		expect(result).toEqual({ kind: "github", number: 42 });
 	});
 
-	test("neither throws", () => {
-		expect(() => validateRunSource(undefined, undefined)).toThrow(
-			"One of --local or --github is required.",
-		);
+	test("neither returns prompt signal", () => {
+		const result = validateRunSource(undefined, undefined);
+		expect(result).toEqual({ kind: "prompt" });
 	});
 
 	test("both throws", () => {
@@ -196,22 +196,6 @@ describe("run command routing", () => {
 // ---------------------------------------------------------------------------
 
 describe("run command validation", () => {
-	test("neither --local nor --github throws", async () => {
-		const program = buildProgram();
-		program.exitOverride();
-		program.configureOutput({ writeErr: () => {} });
-
-		let caught: Error | undefined;
-		try {
-			await program.parseAsync(["node", "stonecut", "run", "-i", "1"]);
-		} catch (err) {
-			caught = err as Error;
-		}
-
-		expect(caught).toBeDefined();
-		expect(caught!.message).toContain("One of --local or --github is required.");
-	});
-
 	test("both --local and --github throws", async () => {
 		const program = buildProgram();
 		program.exitOverride();
@@ -236,6 +220,169 @@ describe("run command validation", () => {
 
 		expect(caught).toBeDefined();
 		expect(caught!.message).toContain("Use exactly one of --local or --github.");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// promptForSource
+// ---------------------------------------------------------------------------
+
+describe("promptForSource", () => {
+	test("choosing local prompts for spec name and returns local source", async () => {
+		const clack = await import("@clack/prompts");
+
+		const selectMock = spyOn(clack, "select").mockResolvedValue("local" as never);
+		const textMock = spyOn(clack, "text").mockResolvedValue("my-spec" as never);
+
+		const result = await promptForSource();
+
+		expect(selectMock).toHaveBeenCalled();
+		expect(textMock).toHaveBeenCalled();
+		expect(result).toEqual({ kind: "local", name: "my-spec" });
+
+		selectMock.mockRestore();
+		textMock.mockRestore();
+	});
+
+	test("choosing github prompts for issue number and returns github source", async () => {
+		const clack = await import("@clack/prompts");
+
+		const selectMock = spyOn(clack, "select").mockResolvedValue("github" as never);
+		const textMock = spyOn(clack, "text").mockResolvedValue("42" as never);
+
+		const result = await promptForSource();
+
+		expect(selectMock).toHaveBeenCalled();
+		expect(textMock).toHaveBeenCalled();
+		expect(result).toEqual({ kind: "github", number: 42 });
+
+		selectMock.mockRestore();
+		textMock.mockRestore();
+	});
+
+	test("cancelling source type throws", async () => {
+		const clack = await import("@clack/prompts");
+
+		const cancelSymbol = Symbol("cancel");
+		const selectMock = spyOn(clack, "select").mockResolvedValue(cancelSymbol as never);
+		const isCancelMock = spyOn(clack, "isCancel").mockReturnValue(true);
+
+		await expect(promptForSource()).rejects.toThrow("Cancelled.");
+
+		selectMock.mockRestore();
+		isCancelMock.mockRestore();
+	});
+
+	test("cancelling spec name throws", async () => {
+		const clack = await import("@clack/prompts");
+
+		const cancelSymbol = Symbol("cancel");
+		const selectMock = spyOn(clack, "select").mockResolvedValue("local" as never);
+		const isCancelSpy = spyOn(clack, "isCancel");
+		isCancelSpy.mockReturnValueOnce(false); // select not cancelled
+		const textMock = spyOn(clack, "text").mockResolvedValue(cancelSymbol as never);
+		isCancelSpy.mockReturnValueOnce(true); // text cancelled
+
+		await expect(promptForSource()).rejects.toThrow("Cancelled.");
+
+		selectMock.mockRestore();
+		textMock.mockRestore();
+		isCancelSpy.mockRestore();
+	});
+
+	test("cancelling issue number throws", async () => {
+		const clack = await import("@clack/prompts");
+
+		const cancelSymbol = Symbol("cancel");
+		const selectMock = spyOn(clack, "select").mockResolvedValue("github" as never);
+		const isCancelSpy = spyOn(clack, "isCancel");
+		isCancelSpy.mockReturnValueOnce(false); // select not cancelled
+		const textMock = spyOn(clack, "text").mockResolvedValue(cancelSymbol as never);
+		isCancelSpy.mockReturnValueOnce(true); // text cancelled
+
+		await expect(promptForSource()).rejects.toThrow("Cancelled.");
+
+		selectMock.mockRestore();
+		textMock.mockRestore();
+		isCancelSpy.mockRestore();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// run command source prompting integration
+// ---------------------------------------------------------------------------
+
+describe("run command source prompting", () => {
+	test("no source flag prompts and routes to runLocal", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+
+		const selectMock = spyOn(clack, "select").mockResolvedValue("local" as never);
+		const textMock = spyOn(clack, "text").mockResolvedValue("my-spec" as never);
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run", "-i", "3"]);
+
+		expect(selectMock).toHaveBeenCalled();
+		expect(localSpy).toHaveBeenCalledWith("my-spec", 3, "claude");
+
+		selectMock.mockRestore();
+		textMock.mockRestore();
+		localSpy.mockRestore();
+	});
+
+	test("no source flag prompts and routes to runGitHub", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+
+		const selectMock = spyOn(clack, "select").mockResolvedValue("github" as never);
+		const textMock = spyOn(clack, "text").mockResolvedValue("42" as never);
+		const githubSpy = spyOn(cliMod, "runGitHub").mockResolvedValue(undefined);
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run", "-i", "all"]);
+
+		expect(selectMock).toHaveBeenCalled();
+		expect(githubSpy).toHaveBeenCalledWith(42, "all", "claude");
+
+		selectMock.mockRestore();
+		textMock.mockRestore();
+		githubSpy.mockRestore();
+	});
+
+	test("--local provided skips source prompt", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+
+		const selectMock = spyOn(clack, "select");
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run", "--local", "foo", "-i", "5"]);
+
+		expect(selectMock).not.toHaveBeenCalled();
+		expect(localSpy).toHaveBeenCalledWith("foo", 5, "claude");
+
+		selectMock.mockRestore();
+		localSpy.mockRestore();
+	});
+
+	test("--github provided skips source prompt", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+
+		const selectMock = spyOn(clack, "select");
+		const githubSpy = spyOn(cliMod, "runGitHub").mockResolvedValue(undefined);
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run", "--github", "42", "-i", "all"]);
+
+		expect(selectMock).not.toHaveBeenCalled();
+		expect(githubSpy).toHaveBeenCalledWith(42, "all", "claude");
+
+		selectMock.mockRestore();
+		githubSpy.mockRestore();
 	});
 });
 
