@@ -56,6 +56,13 @@ describe("parseFrontmatter", () => {
 		expect(result.body).toBe(content);
 	});
 
+	test("does not match --- embedded in a longer line as closing fence", () => {
+		const content = "---\ntitle: test\n---notafence\n---\nBody\n";
+		const result = parseFrontmatter(content);
+		expect(result.meta).toEqual({ title: "test" });
+		expect(result.body).toBe("Body\n");
+	});
+
 	test("returns full body when closing --- is missing", () => {
 		const content = "---\ntitle: unclosed\nBody without closing delimiter.\n";
 		const result = parseFrontmatter(content);

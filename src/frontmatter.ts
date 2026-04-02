@@ -15,7 +15,24 @@ export function parseFrontmatter(content: string): Frontmatter {
 	}
 
 	const lineBreak = content.startsWith("---\r\n") ? "\r\n" : "\n";
-	const closingIndex = content.indexOf(`${lineBreak}---`, 3);
+	const fence = `${lineBreak}---`;
+	let searchFrom = 3;
+	let closingIndex = -1;
+	while (true) {
+		const idx = content.indexOf(fence, searchFrom);
+		if (idx === -1) break;
+		const afterFence = idx + fence.length;
+		// Valid closing fence: followed by a newline or at end of string
+		if (
+			afterFence === content.length ||
+			content[afterFence] === "\n" ||
+			content[afterFence] === "\r"
+		) {
+			closingIndex = idx;
+			break;
+		}
+		searchFrom = afterFence;
+	}
 	if (closingIndex === -1) {
 		return { meta: {}, body: content };
 	}

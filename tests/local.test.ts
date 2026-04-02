@@ -240,6 +240,22 @@ describe("Frontmatter integration", () => {
 		expect(issue!.content).toBe("Just plain markdown.");
 	});
 
+	test("strips frontmatter from issue content with CRLF", async () => {
+		const specDir = join(tmpDir, ".stonecut", "fm-crlf");
+		const issuesDir = join(specDir, "issues");
+		mkdirSync(issuesDir, { recursive: true });
+		writeFileSync(join(specDir, "prd.md"), "# PRD\r\n");
+		writeFileSync(
+			join(issuesDir, "01-first.md"),
+			"---\r\nsource: github\r\nissue: 42\r\n---\r\n# Issue Body\r\nActual content.\r\n",
+		);
+
+		const source = new LocalSource("fm-crlf");
+		const issue = await source.getNextIssue();
+		expect(issue).not.toBeNull();
+		expect(issue!.content).toBe("# Issue Body\r\nActual content.\r\n");
+	});
+
 	test("strips frontmatter from PRD content", async () => {
 		const specDir = join(tmpDir, ".stonecut", "fmprd");
 		const issuesDir = join(specDir, "issues");
