@@ -70,6 +70,23 @@ bun test
 
 Stonecut has one execution command (`run`) with two sources (`--local` for local PRDs, `--github` for GitHub PRDs). All execution is headless — Stonecut runs the issues autonomously and creates a PR when done.
 
+### `stonecut run` — Interactive wizard
+
+When flags are omitted, Stonecut prompts for each missing parameter:
+
+```sh
+# Full wizard — prompted for source, iterations, branch, and base branch
+stonecut run
+
+# Partial — only iterations, branch, and base are prompted
+stonecut run --local my-feature
+
+# Partial — only source, branch, and base are prompted
+stonecut run -i all
+```
+
+Flags provided via CLI skip the corresponding prompts. When all flags are given, the command runs without any prompts (the existing behavior).
+
 ### `stonecut run --local` — Local PRDs
 
 ```sh
@@ -92,20 +109,26 @@ stonecut run --github 42 -i all
 
 ### Flags
 
-| Flag           | Short | Required | Description                                                       |
-| -------------- | ----- | -------- | ----------------------------------------------------------------- |
-| `--iterations` | `-i`  | Always   | Positive integer or `all`.                                        |
-| `--runner`     | —     | No       | Agentic CLI runner to use (`claude`, `codex`). Default: `claude`. |
-| `--version`    | `-V`  | —        | Show version and exit.                                            |
+| Flag           | Short | Required | Description                                                        |
+| -------------- | ----- | -------- | ------------------------------------------------------------------ |
+| `--local`      | —     | No       | Local PRD name (`.stonecut/<name>/`). Prompted if omitted.         |
+| `--github`     | —     | No       | GitHub PRD issue number. Prompted if omitted.                      |
+| `--iterations` | `-i`  | No       | Positive integer or `all`. Prompted with default `all` if omitted. |
+| `--runner`     | —     | No       | Agentic CLI runner (`claude`, `codex`). Default: `claude`.         |
+| `--version`    | `-V`  | —        | Show version and exit.                                             |
 
 ### Pre-execution prompts
 
-Before starting, Stonecut:
+Before starting, Stonecut prompts for any missing parameters in order:
 
-1. Checks for a clean working tree
-2. Prompts for a branch name (suggests `stonecut/<slug>` — local uses the spec name, GitHub uses the PRD title slug, with `stonecut/issue-<number>` fallback)
-3. Prompts for a base branch / PR target (suggests `main`)
-4. Creates or checks out the branch
+1. **Source** — `--local` or `--github` (skipped when provided via flag)
+2. **Spec name / issue number** — free-text input for the chosen source (skipped when provided via flag)
+3. **Iterations** — number of issues to process, default `all` (skipped when `-i` provided)
+4. **Branch name** — suggests `stonecut/<slug>` based on the source
+5. **Base branch** — suggests the repository's default branch (usually `main`)
+6. Creates or checks out the branch
+
+When all parameters are provided via flags, only the branch and base branch prompts appear (steps 4–5).
 
 ### After a run
 

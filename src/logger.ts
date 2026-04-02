@@ -6,7 +6,7 @@
  */
 
 import { appendFileSync, mkdirSync } from "fs";
-import { join } from "path";
+import { join, resolve } from "path";
 import type { LogWriter } from "./types";
 
 export class Logger implements LogWriter {
@@ -14,7 +14,7 @@ export class Logger implements LogWriter {
 
 	constructor(prdIdentifier: string) {
 		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-		const logDir = join(".stonecut", "logs");
+		const logDir = resolve(".stonecut", "logs");
 		mkdirSync(logDir, { recursive: true });
 		this.filePath = join(logDir, `${prdIdentifier}-${timestamp}.log`);
 	}
