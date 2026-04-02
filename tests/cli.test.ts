@@ -316,39 +316,53 @@ describe("run command source prompting", () => {
 	test("no source flag prompts and routes to runLocal", async () => {
 		const clack = await import("@clack/prompts");
 		const cliMod = await import("../src/cli");
+		const gitMod = await import("../src/git");
 
 		const selectMock = spyOn(clack, "select").mockResolvedValue("local" as never);
 		const textMock = spyOn(clack, "text").mockResolvedValue("my-spec" as never);
 		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+		const defaultBranchMock = spyOn(gitMod, "defaultBranch").mockReturnValue("main");
 
 		const program = buildProgram();
 		await program.parseAsync(["node", "stonecut", "run", "-i", "3"]);
 
 		expect(selectMock).toHaveBeenCalled();
-		expect(localSpy).toHaveBeenCalledWith("my-spec", 3, "claude");
+		// Wizard mode: prefilled branch/base are passed as 4th arg
+		expect(localSpy).toHaveBeenCalledWith("my-spec", 3, "claude", {
+			branch: "my-spec",
+			baseBranch: "my-spec",
+		});
 
 		selectMock.mockRestore();
 		textMock.mockRestore();
 		localSpy.mockRestore();
+		defaultBranchMock.mockRestore();
 	});
 
 	test("no source flag prompts and routes to runGitHub", async () => {
 		const clack = await import("@clack/prompts");
 		const cliMod = await import("../src/cli");
+		const gitMod = await import("../src/git");
 
 		const selectMock = spyOn(clack, "select").mockResolvedValue("github" as never);
 		const textMock = spyOn(clack, "text").mockResolvedValue("42" as never);
 		const githubSpy = spyOn(cliMod, "runGitHub").mockResolvedValue(undefined);
+		const defaultBranchMock = spyOn(gitMod, "defaultBranch").mockReturnValue("main");
 
 		const program = buildProgram();
 		await program.parseAsync(["node", "stonecut", "run", "-i", "all"]);
 
 		expect(selectMock).toHaveBeenCalled();
-		expect(githubSpy).toHaveBeenCalledWith(42, "all", "claude");
+		// Wizard mode: prefilled branch/base are passed as 4th arg
+		expect(githubSpy).toHaveBeenCalledWith(42, "all", "claude", {
+			branch: "42",
+			baseBranch: "42",
+		});
 
 		selectMock.mockRestore();
 		textMock.mockRestore();
 		githubSpy.mockRestore();
+		defaultBranchMock.mockRestore();
 	});
 
 	test("--local provided skips source prompt", async () => {
@@ -362,7 +376,8 @@ describe("run command source prompting", () => {
 		await program.parseAsync(["node", "stonecut", "run", "--local", "foo", "-i", "5"]);
 
 		expect(selectMock).not.toHaveBeenCalled();
-		expect(localSpy).toHaveBeenCalledWith("foo", 5, "claude");
+		// All flags provided: no wizard, prefilled is undefined
+		expect(localSpy).toHaveBeenCalledWith("foo", 5, "claude", undefined);
 
 		selectMock.mockRestore();
 		localSpy.mockRestore();
@@ -379,7 +394,8 @@ describe("run command source prompting", () => {
 		await program.parseAsync(["node", "stonecut", "run", "--github", "42", "-i", "all"]);
 
 		expect(selectMock).not.toHaveBeenCalled();
-		expect(githubSpy).toHaveBeenCalledWith(42, "all", "claude");
+		// All flags provided: no wizard, prefilled is undefined
+		expect(githubSpy).toHaveBeenCalledWith(42, "all", "claude", undefined);
 
 		selectMock.mockRestore();
 		githubSpy.mockRestore();
@@ -394,16 +410,18 @@ describe("run command iterations prompting", () => {
 	test("no -i flag prompts for iterations with default 'all'", async () => {
 		const clack = await import("@clack/prompts");
 		const cliMod = await import("../src/cli");
+		const gitMod = await import("../src/git");
 
 		const selectMock = spyOn(clack, "select").mockResolvedValue("local" as never);
-		// First text call: source name, second: iterations
+		// First text call: source name, second: iterations, third: branch, fourth: baseBranch
 		const textMock = spyOn(clack, "text").mockResolvedValue("all" as never);
 		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+		const defaultBranchMock = spyOn(gitMod, "defaultBranch").mockReturnValue("main");
 
 		const program = buildProgram();
 		await program.parseAsync(["node", "stonecut", "run"]);
 
-		// text should have been called for: source name + iterations (and possibly source prompt)
+		// text should have been called for: source name + iterations + branch + baseBranch
 		const iterationsCall = textMock.mock.calls.find(
 			(call) => (call[0] as { message: string }).message === "Iterations:",
 		);
@@ -414,15 +432,18 @@ describe("run command iterations prompting", () => {
 		selectMock.mockRestore();
 		textMock.mockRestore();
 		localSpy.mockRestore();
+		defaultBranchMock.mockRestore();
 	});
 
 	test("--local without -i prompts for iterations", async () => {
 		const clack = await import("@clack/prompts");
 		const cliMod = await import("../src/cli");
+		const gitMod = await import("../src/git");
 
-		// Only the iterations prompt should fire (source is provided via --local)
+		// Wizard mode: iterations + branch + baseBranch prompts fire
 		const textMock = spyOn(clack, "text").mockResolvedValue("5" as never);
 		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+		const defaultBranchMock = spyOn(gitMod, "defaultBranch").mockReturnValue("main");
 
 		const program = buildProgram();
 		await program.parseAsync(["node", "stonecut", "run", "--local", "foo"]);
@@ -431,10 +452,15 @@ describe("run command iterations prompting", () => {
 			(call) => (call[0] as { message: string }).message === "Iterations:",
 		);
 		expect(iterationsCall).toBeDefined();
-		expect(localSpy).toHaveBeenCalledWith("foo", 5, "claude");
+		// Wizard mode: prefilled is passed (text mock returns "5" for all calls)
+		expect(localSpy).toHaveBeenCalledWith("foo", 5, "claude", {
+			branch: "5",
+			baseBranch: "5",
+		});
 
 		textMock.mockRestore();
 		localSpy.mockRestore();
+		defaultBranchMock.mockRestore();
 	});
 
 	test("--local with -i 5 skips iterations prompt", async () => {
@@ -447,11 +473,12 @@ describe("run command iterations prompting", () => {
 		const program = buildProgram();
 		await program.parseAsync(["node", "stonecut", "run", "--local", "foo", "-i", "5"]);
 
+		// All flags provided: no wizard, no prompts in action handler
 		const iterationsCall = textMock.mock.calls.find(
 			(call) => (call[0] as { message: string }).message === "Iterations:",
 		);
 		expect(iterationsCall).toBeUndefined();
-		expect(localSpy).toHaveBeenCalledWith("foo", 5, "claude");
+		expect(localSpy).toHaveBeenCalledWith("foo", 5, "claude", undefined);
 
 		textMock.mockRestore();
 		localSpy.mockRestore();
@@ -467,11 +494,12 @@ describe("run command iterations prompting", () => {
 		const program = buildProgram();
 		await program.parseAsync(["node", "stonecut", "run", "--local", "foo", "-i", "all"]);
 
+		// All flags provided: no wizard, no prompts in action handler
 		const iterationsCall = textMock.mock.calls.find(
 			(call) => (call[0] as { message: string }).message === "Iterations:",
 		);
 		expect(iterationsCall).toBeUndefined();
-		expect(localSpy).toHaveBeenCalledWith("foo", "all", "claude");
+		expect(localSpy).toHaveBeenCalledWith("foo", "all", "claude", undefined);
 
 		textMock.mockRestore();
 		localSpy.mockRestore();
@@ -905,5 +933,221 @@ describe("preExecution", () => {
 		(gitMod.defaultBranch as ReturnType<typeof mock>).mockRestore?.();
 		(gitMod.checkoutOrCreateBranch as ReturnType<typeof mock>).mockRestore?.();
 		(console.log as ReturnType<typeof mock>).mockRestore?.();
+	});
+
+	test("skips branch prompt when prefilled branch is provided", async () => {
+		const clack = await import("@clack/prompts");
+		const gitMod = await import("../src/git");
+
+		const textMock = mock().mockResolvedValueOnce("main");
+		spyOn(clack, "text").mockImplementation(textMock);
+		spyOn(gitMod, "ensureCleanTree").mockImplementation(() => {});
+		spyOn(gitMod, "defaultBranch").mockReturnValue("main");
+		const checkoutSpy = spyOn(gitMod, "checkoutOrCreateBranch").mockImplementation(() => {});
+		spyOn(console, "log").mockImplementation(() => {});
+
+		const [branch, baseBranch] = await preExecution("stonecut/suggested", {
+			branch: "stonecut/prefilled",
+		});
+
+		expect(branch).toBe("stonecut/prefilled");
+		expect(baseBranch).toBe("main");
+		// Only one text call (baseBranch), branch prompt was skipped
+		expect(textMock).toHaveBeenCalledTimes(1);
+		expect((textMock.mock.calls[0][0] as { message: string }).message).toBe(
+			"Base branch / PR target:",
+		);
+		expect(checkoutSpy).toHaveBeenCalledWith("stonecut/prefilled");
+
+		(clack.text as ReturnType<typeof mock>).mockRestore?.();
+		(gitMod.ensureCleanTree as ReturnType<typeof mock>).mockRestore?.();
+		(gitMod.defaultBranch as ReturnType<typeof mock>).mockRestore?.();
+		(gitMod.checkoutOrCreateBranch as ReturnType<typeof mock>).mockRestore?.();
+		(console.log as ReturnType<typeof mock>).mockRestore?.();
+	});
+
+	test("skips baseBranch prompt when prefilled baseBranch is provided", async () => {
+		const clack = await import("@clack/prompts");
+		const gitMod = await import("../src/git");
+
+		const textMock = mock().mockResolvedValueOnce("stonecut/my-branch");
+		spyOn(clack, "text").mockImplementation(textMock);
+		spyOn(gitMod, "ensureCleanTree").mockImplementation(() => {});
+		const checkoutSpy = spyOn(gitMod, "checkoutOrCreateBranch").mockImplementation(() => {});
+		spyOn(console, "log").mockImplementation(() => {});
+
+		const [branch, baseBranch] = await preExecution("stonecut/suggested", {
+			baseBranch: "develop",
+		});
+
+		expect(branch).toBe("stonecut/my-branch");
+		expect(baseBranch).toBe("develop");
+		// Only one text call (branch), baseBranch prompt was skipped
+		expect(textMock).toHaveBeenCalledTimes(1);
+		expect((textMock.mock.calls[0][0] as { message: string }).message).toBe("Branch name:");
+		expect(checkoutSpy).toHaveBeenCalledWith("stonecut/my-branch");
+
+		(clack.text as ReturnType<typeof mock>).mockRestore?.();
+		(gitMod.ensureCleanTree as ReturnType<typeof mock>).mockRestore?.();
+		(gitMod.checkoutOrCreateBranch as ReturnType<typeof mock>).mockRestore?.();
+		(console.log as ReturnType<typeof mock>).mockRestore?.();
+	});
+
+	test("skips both prompts when both prefilled values are provided", async () => {
+		const clack = await import("@clack/prompts");
+		const gitMod = await import("../src/git");
+
+		const textMock = mock();
+		spyOn(clack, "text").mockImplementation(textMock);
+		spyOn(gitMod, "ensureCleanTree").mockImplementation(() => {});
+		const checkoutSpy = spyOn(gitMod, "checkoutOrCreateBranch").mockImplementation(() => {});
+		spyOn(console, "log").mockImplementation(() => {});
+
+		const [branch, baseBranch] = await preExecution("stonecut/suggested", {
+			branch: "stonecut/prefilled",
+			baseBranch: "develop",
+		});
+
+		expect(branch).toBe("stonecut/prefilled");
+		expect(baseBranch).toBe("develop");
+		// No text calls at all
+		expect(textMock).not.toHaveBeenCalled();
+		expect(checkoutSpy).toHaveBeenCalledWith("stonecut/prefilled");
+
+		(clack.text as ReturnType<typeof mock>).mockRestore?.();
+		(gitMod.ensureCleanTree as ReturnType<typeof mock>).mockRestore?.();
+		(gitMod.checkoutOrCreateBranch as ReturnType<typeof mock>).mockRestore?.();
+		(console.log as ReturnType<typeof mock>).mockRestore?.();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Wizard flow: branch/base prompting
+// ---------------------------------------------------------------------------
+
+describe("wizard flow branch/base prompting", () => {
+	test("wizard mode prompts for branch and baseBranch in action handler", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+		const gitMod = await import("../src/git");
+
+		const selectMock = spyOn(clack, "select").mockResolvedValue("local" as never);
+		// Calls: source name, iterations, branch, baseBranch
+		const textMock = spyOn(clack, "text")
+			.mockResolvedValueOnce("my-spec" as never)
+			.mockResolvedValueOnce("all" as never)
+			.mockResolvedValueOnce("stonecut/my-spec" as never)
+			.mockResolvedValueOnce("main" as never);
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+		const defaultBranchMock = spyOn(gitMod, "defaultBranch").mockReturnValue("main");
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run"]);
+
+		// Should have branch and baseBranch prompts
+		const branchCall = textMock.mock.calls.find(
+			(call) => (call[0] as { message: string }).message === "Branch name:",
+		);
+		const baseBranchCall = textMock.mock.calls.find(
+			(call) => (call[0] as { message: string }).message === "Base branch / PR target:",
+		);
+		expect(branchCall).toBeDefined();
+		expect(baseBranchCall).toBeDefined();
+
+		// prefilled should be passed to runLocal
+		expect(localSpy).toHaveBeenCalledWith("my-spec", "all", "claude", {
+			branch: "stonecut/my-spec",
+			baseBranch: "main",
+		});
+
+		selectMock.mockRestore();
+		textMock.mockRestore();
+		localSpy.mockRestore();
+		defaultBranchMock.mockRestore();
+	});
+
+	test("all flags provided skips branch/base prompts in action handler", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+
+		const textMock = spyOn(clack, "text");
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run", "--local", "foo", "-i", "3"]);
+
+		// No branch/base prompts in action handler
+		const branchCall = textMock.mock.calls.find(
+			(call) => (call[0] as { message: string }).message === "Branch name:",
+		);
+		const baseBranchCall = textMock.mock.calls.find(
+			(call) => (call[0] as { message: string }).message === "Base branch / PR target:",
+		);
+		expect(branchCall).toBeUndefined();
+		expect(baseBranchCall).toBeUndefined();
+
+		// prefilled is undefined
+		expect(localSpy).toHaveBeenCalledWith("foo", 3, "claude", undefined);
+
+		textMock.mockRestore();
+		localSpy.mockRestore();
+	});
+
+	test("wizard branch prompt uses correct default for local source", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+		const gitMod = await import("../src/git");
+
+		// Calls: iterations, branch, baseBranch (source is provided via --local)
+		const textMock = spyOn(clack, "text")
+			.mockResolvedValueOnce("all" as never)
+			.mockResolvedValueOnce("stonecut/my-cool-spec" as never)
+			.mockResolvedValueOnce("main" as never);
+		const localSpy = spyOn(cliMod, "runLocal").mockResolvedValue(undefined);
+		const defaultBranchMock = spyOn(gitMod, "defaultBranch").mockReturnValue("main");
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run", "--local", "my-cool-spec"]);
+
+		const branchCall = textMock.mock.calls.find(
+			(call) => (call[0] as { message: string }).message === "Branch name:",
+		);
+		expect(branchCall).toBeDefined();
+		expect((branchCall![0] as { defaultValue: string }).defaultValue).toBe("stonecut/my-cool-spec");
+
+		const baseBranchCall = textMock.mock.calls.find(
+			(call) => (call[0] as { message: string }).message === "Base branch / PR target:",
+		);
+		expect(baseBranchCall).toBeDefined();
+		expect((baseBranchCall![0] as { defaultValue: string }).defaultValue).toBe("main");
+
+		textMock.mockRestore();
+		localSpy.mockRestore();
+		defaultBranchMock.mockRestore();
+	});
+
+	test("wizard branch prompt uses correct default for github source", async () => {
+		const clack = await import("@clack/prompts");
+		const cliMod = await import("../src/cli");
+		const gitMod = await import("../src/git");
+
+		const selectMock = spyOn(clack, "select").mockResolvedValue("github" as never);
+		const textMock = spyOn(clack, "text").mockResolvedValue("42" as never);
+		const githubSpy = spyOn(cliMod, "runGitHub").mockResolvedValue(undefined);
+		const defaultBranchMock = spyOn(gitMod, "defaultBranch").mockReturnValue("main");
+
+		const program = buildProgram();
+		await program.parseAsync(["node", "stonecut", "run", "-i", "all"]);
+
+		const branchCall = textMock.mock.calls.find(
+			(call) => (call[0] as { message: string }).message === "Branch name:",
+		);
+		expect(branchCall).toBeDefined();
+		expect((branchCall![0] as { defaultValue: string }).defaultValue).toBe("stonecut/issue-42");
+
+		selectMock.mockRestore();
+		textMock.mockRestore();
+		githubSpy.mockRestore();
+		defaultBranchMock.mockRestore();
 	});
 });

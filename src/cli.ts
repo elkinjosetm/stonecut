@@ -179,28 +179,43 @@ function commentOnIssue(issueNumber: number, runnerOutput: string | undefined): 
  * Run pre-execution prompts and git checks.
  * Returns [branch, baseBranch].
  */
-export async function preExecution(suggestedBranch: string): Promise<[string, string]> {
+export async function preExecution(
+	suggestedBranch: string,
+	prefilled?: { branch?: string; baseBranch?: string },
+): Promise<[string, string]> {
 	ensureCleanTree();
 
-	const branch = await clack.text({
-		message: "Branch name:",
-		defaultValue: suggestedBranch,
-		placeholder: suggestedBranch,
-	});
+	let branch: string;
+	if (prefilled?.branch) {
+		branch = prefilled.branch;
+	} else {
+		const branchInput = await clack.text({
+			message: "Branch name:",
+			defaultValue: suggestedBranch,
+			placeholder: suggestedBranch,
+		});
 
-	if (clack.isCancel(branch)) {
-		throw new Error("Cancelled.");
+		if (clack.isCancel(branchInput)) {
+			throw new Error("Cancelled.");
+		}
+		branch = branchInput;
 	}
 
-	const detectedDefault = defaultBranch();
-	const baseBranch = await clack.text({
-		message: "Base branch / PR target:",
-		defaultValue: detectedDefault,
-		placeholder: detectedDefault,
-	});
+	let baseBranch: string;
+	if (prefilled?.baseBranch) {
+		baseBranch = prefilled.baseBranch;
+	} else {
+		const detectedDefault = defaultBranch();
+		const baseBranchInput = await clack.text({
+			message: "Base branch / PR target:",
+			defaultValue: detectedDefault,
+			placeholder: detectedDefault,
+		});
 
-	if (clack.isCancel(baseBranch)) {
-		throw new Error("Cancelled.");
+		if (clack.isCancel(baseBranchInput)) {
+			throw new Error("Cancelled.");
+		}
+		baseBranch = baseBranchInput;
 	}
 
 	checkoutOrCreateBranch(branch);
@@ -248,6 +263,7 @@ export async function runLocal(
 	name: string,
 	iterations: number | "all",
 	runnerName: string,
+	prefilled?: { branch?: string; baseBranch?: string },
 ): Promise<void> {
 	const runner = getRunner(runnerName);
 	const source = new LocalSource(name);
@@ -258,7 +274,7 @@ export async function runLocal(
 
 	try {
 		const suggestedBranch = prdIdentifier ? `stonecut/${prdIdentifier}` : "stonecut/spec";
-		const [branch, baseBranch] = await preExecution(suggestedBranch);
+		const [branch, baseBranch] = await preExecution(suggestedBranch, prefilled);
 
 		const prdContent = await source.getPrdContent();
 		const results = await runAfkLoop<Issue>(
@@ -294,6 +310,7 @@ export async function runGitHub(
 	number: number,
 	iterations: number | "all",
 	runnerName: string,
+	prefilled?: { branch?: string; baseBranch?: string },
 ): Promise<void> {
 	const runner = getRunner(runnerName);
 	const source = new GitHubSource(number);
@@ -306,7 +323,7 @@ export async function runGitHub(
 		const prdSlug = slugifyBranchComponent(prd.title);
 		const suggestedBranch = prdSlug ? `stonecut/${prdSlug}` : `stonecut/issue-${number}`;
 		const prTitle = prd.title || `PRD #${number}`;
-		const [branch, baseBranch] = await preExecution(suggestedBranch);
+		const [branch, baseBranch] = await preExecution(suggestedBranch, prefilled);
 
 		const prdContent = prd.body;
 		const results = await runAfkLoop<GitHubIssue>(
@@ -355,7 +372,8 @@ export function buildProgram(): Command {
 			const source = validated.kind === "prompt" ? await promptForSource() : validated;
 
 			let iterations: number | "all";
-			if (opts.iterations !== undefined) {
+			const needsIterationPrompt = opts.iterations === undefined;
+			if (!needsIterationPrompt) {
 				iterations = parseIterations(opts.iterations);
 			} else {
 				const iterationsInput = await clack.text({
@@ -376,12 +394,43 @@ export function buildProgram(): Command {
 				iterations = parseIterations(iterationsInput);
 			}
 
+			const isWizard = validated.kind === "prompt" || needsIterationPrompt;
+			let prefilled: { branch?: string; baseBranch?: string } | undefined;
+
+			if (isWizard) {
+				const suggestedBranch =
+					source.kind === "local"
+						? `stonecut/${slugifyBranchComponent(source.name) || "spec"}`
+						: `stonecut/issue-${source.number}`;
+
+				const branch = await clack.text({
+					message: "Branch name:",
+					defaultValue: suggestedBranch,
+					placeholder: suggestedBranch,
+				});
+				if (clack.isCancel(branch)) {
+					throw new Error("Cancelled.");
+				}
+
+				const detectedDefault = defaultBranch();
+				const baseBranch = await clack.text({
+					message: "Base branch / PR target:",
+					defaultValue: detectedDefault,
+					placeholder: detectedDefault,
+				});
+				if (clack.isCancel(baseBranch)) {
+					throw new Error("Cancelled.");
+				}
+
+				prefilled = { branch, baseBranch };
+			}
+
 			const runnerName: string = opts.runner;
 
 			if (source.kind === "local") {
-				await runLocal(source.name, iterations, runnerName);
+				await runLocal(source.name, iterations, runnerName, prefilled);
 			} else {
-				await runGitHub(source.number, iterations, runnerName);
+				await runGitHub(source.number, iterations, runnerName, prefilled);
 			}
 		});
 
