@@ -25,6 +25,7 @@ import { Logger } from "./logger";
 import { defaultGitOps, runAfkLoop } from "./runner";
 import { getRunner } from "./runners/index";
 import { setupSkills, removeSkills } from "./skills";
+import { init } from "./init";
 import type { GitHubIssue, Issue, IterationResult, Session } from "./types";
 
 const require = createRequire(import.meta.url);
@@ -432,6 +433,14 @@ export function buildProgram(): Command {
 			} else {
 				await runGitHub(source.number, iterations, runnerName, prefilled);
 			}
+		});
+
+	program
+		.command("init")
+		.description("Initialize a .stonecut/ directory with project config and gitignore.")
+		.action(() => {
+			init();
+			console.log("Created .stonecut/config.json and .stonecut/.gitignore");
 		});
 
 	program
