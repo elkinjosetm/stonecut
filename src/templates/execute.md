@@ -12,6 +12,7 @@ IMPORTANT:
 
 - Do ONLY this one issue. Stop after verifying.
 - Do NOT commit — the orchestrator handles git operations.
+- Do NOT modify or delete the `.stonecut/` directory — it contains runtime state and session logs.
 - Do NOT modify files outside the scope of this issue unless fixing an import path that changed.
 - Scope lint to specific files — do not run project-wide lint that auto-fixes unrelated files.
 

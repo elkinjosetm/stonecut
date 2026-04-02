@@ -2,24 +2,29 @@
  * Tests for the Logger module.
  */
 
-import { describe, expect, spyOn, test, afterEach } from "bun:test";
-import { existsSync, readFileSync, rmSync } from "fs";
+import { describe, expect, spyOn, test, afterEach, beforeEach } from "bun:test";
+import { existsSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
+import { tmpdir } from "os";
 import { Logger } from "../src/logger";
 
-const TEST_LOG_DIR = join(".stonecut", "logs");
+let tmpDir: string;
+
+beforeEach(() => {
+	tmpDir = join(tmpdir(), `stonecut-logger-test-${Date.now()}`);
+	mkdirSync(tmpDir, { recursive: true });
+	process.chdir(tmpDir);
+});
 
 afterEach(() => {
-	// Clean up test log files
-	if (existsSync(TEST_LOG_DIR)) {
-		rmSync(TEST_LOG_DIR, { recursive: true, force: true });
-	}
+	process.chdir(join(import.meta.dir, ".."));
+	rmSync(tmpDir, { recursive: true, force: true });
 });
 
 describe("Logger", () => {
 	test("creates .stonecut/logs/ directory", () => {
 		const logger = new Logger("test-spec");
-		expect(existsSync(TEST_LOG_DIR)).toBe(true);
+		expect(existsSync(join(tmpDir, ".stonecut", "logs"))).toBe(true);
 		logger.close();
 	});
 
@@ -77,6 +82,54 @@ describe("Logger", () => {
 			logger.close();
 			logger.close();
 		} finally {
+			logSpy.mockRestore();
+		}
+	});
+
+	test("recreates log directory if deleted mid-session", () => {
+		const logSpy = spyOn(console, "log").mockImplementation(() => {});
+		const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+		try {
+			const logger = new Logger("test-spec");
+			logger.log("before");
+
+			// Simulate runner deleting the logs directory
+			rmSync(join(tmpDir, ".stonecut", "logs"), { recursive: true, force: true });
+
+			logger.log("after");
+			logger.close();
+
+			// "before" is lost (old file deleted with directory), but session continues
+			const content = readFileSync(logger.filePath, "utf-8");
+			expect(content).toContain("after");
+			expect(errorSpy).toHaveBeenCalledTimes(1);
+			expect(errorSpy.mock.calls[0]?.[0]).toContain("session log was deleted during execution");
+		} finally {
+			errorSpy.mockRestore();
+			logSpy.mockRestore();
+		}
+	});
+
+	test("does not crash when log file is unwritable", () => {
+		const logSpy = spyOn(console, "log").mockImplementation(() => {});
+		const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+		try {
+			const logger = new Logger("test-spec");
+
+			// Nuke the entire .stonecut directory and block recreation
+			rmSync(join(tmpDir, ".stonecut"), { recursive: true, force: true });
+			// Place a file where the directory needs to be, so mkdirSync fails
+			writeFileSync(join(tmpDir, ".stonecut"), "");
+
+			// Should not throw — log is best-effort
+			expect(() => logger.log("still works")).not.toThrow();
+			expect(() => logger.log("still broken")).not.toThrow();
+			expect(errorSpy).toHaveBeenCalledTimes(1);
+			expect(errorSpy.mock.calls[0]?.[0]).toContain("session log is unavailable");
+		} finally {
+			// Clean up the blocker file so afterEach can remove tmpDir
+			rmSync(join(tmpDir, ".stonecut"), { force: true });
+			errorSpy.mockRestore();
 			logSpy.mockRestore();
 		}
 	});
