@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, spyOn, test, afterEach, beforeEach } from "bun:test";
-import { existsSync, readFileSync, rmSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { Logger } from "../src/logger";
@@ -119,7 +119,7 @@ describe("Logger", () => {
 			// Nuke the entire .stonecut directory and block recreation
 			rmSync(join(tmpDir, ".stonecut"), { recursive: true, force: true });
 			// Place a file where the directory needs to be, so mkdirSync fails
-			Bun.spawnSync(["touch", join(tmpDir, ".stonecut")]);
+			writeFileSync(join(tmpDir, ".stonecut"), "");
 
 			// Should not throw — log is best-effort
 			expect(() => logger.log("still works")).not.toThrow();

@@ -17,9 +17,14 @@ export class Logger implements LogWriter {
 	constructor(prdIdentifier: string) {
 		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 		const logDir = resolve(".stonecut", "logs");
-		mkdirSync(logDir, { recursive: true });
 		this.filePath = join(logDir, `${prdIdentifier}-${timestamp}.log`);
-		appendFileSync(this.filePath, "");
+		try {
+			mkdirSync(logDir, { recursive: true });
+			appendFileSync(this.filePath, "");
+		} catch {
+			console.error("Warning: session log is unavailable; continuing without file logging.");
+			this.warnedUnavailable = true;
+		}
 	}
 
 	log(message: string): void {
